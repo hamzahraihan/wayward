@@ -108,10 +108,49 @@ impl Default for ClockConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct CpuConfig {
+    pub interval_ms: u64,
+}
+
+impl Default for CpuConfig {
+    fn default() -> Self {
+        Self { interval_ms: 2000 }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct RamConfig {
+    pub interval_ms: u64,
+}
+
+impl Default for RamConfig {
+    fn default() -> Self {
+        Self { interval_ms: 3000 }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct BatteryConfig {
+    pub interval_ms: u64,
+}
+
+impl Default for BatteryConfig {
+    fn default() -> Self {
+        Self { interval_ms: 5000 }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 #[serde(default)]
 pub struct ModulesConfig {
     pub clock: ClockConfig,
+    pub cpu: CpuConfig,
+    pub ram: RamConfig,
+    pub battery: BatteryConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
@@ -153,6 +192,22 @@ mod tests {
         assert_eq!(parsed.font.size, 12.0);
         assert_eq!(parsed.theme.background, "#1e1e2e");
         assert_eq!(parsed.layout.left, vec!["clock"]);
+
+        assert_eq!(parsed.modules.clock.interval_ms, 1000);
+        assert_eq!(parsed.modules.cpu.interval_ms, 2000);
+        assert_eq!(parsed.modules.ram.interval_ms, 3000);
+        assert_eq!(parsed.modules.battery.interval_ms, 5000);
+    }
+
+    #[test]
+    fn partial_cpu_toml_preserves_other_stat_defaults() {
+        let parsed: Config = toml::from_str("[modules.cpu]\ninterval_ms = 4000")
+            .expect("partial TOML should deserialize");
+
+        assert_eq!(parsed.modules.cpu.interval_ms, 4000);
+        assert_eq!(parsed.modules.ram.interval_ms, 3000);
+        assert_eq!(parsed.modules.battery.interval_ms, 5000);
+        assert_eq!(parsed.modules.clock.interval_ms, 1000);
     }
 
     #[test]
