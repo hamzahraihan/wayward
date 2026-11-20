@@ -1,0 +1,54 @@
+# wayward default configuration
+#
+# This file is the bundled template. On first run wayward copies it to:
+#   C:\Users\<user>\.config\.wayward\wayward.toml
+# An existing file is never overwritten. Edit that copy to change the bar.
+#
+# The config folder defaults to ~/.config/.wayward (resolved from the home
+# directory, NOT %APPDATA% or %LOCALAPPDATA%). Set the WAYWARD_CONFIG_DIR
+# environment variable to override the folder, which is useful for testing.
+#
+# TOML is the single source of truth: the settings GUI reads and writes this
+# same file. Unknown keys are ignored with a warning; missing keys fall back
+# to the values in this template.
+#
+# Secrets (API keys, tokens) NEVER go in this file. They are stored in the
+# Windows Credential Manager via the keyring and are read from there at runtime.
+
+[bar]
+position = "top"        # top | bottom
+height = 28             # logical pixels, 16..=128
+padding = 8             # logical pixels
+monitor = ""            # reserved: milestone 1 uses the primary monitor only
+
+[font]
+# A monospace font ships with Windows 10/11. A Nerd Font may be installed
+# separately and selected here to show icons; icons appear in later milestones
+# and no font is bundled with wayward. Change this family to a Nerd Font name
+# (for example "JetBrainsMono Nerd Font") once you have installed one.
+family = "Cascadia Mono"  # monospace, ships with Windows 10/11
+size = 12.0             # 8.0..=24.0
+
+# Default theme: Catppuccin Mocha. Use these values exactly. If a different
+# shade is needed, add a new named key instead of hardcoding a color in a view.
+# A missing key falls back to the value below, not to an arbitrary color.
+[theme]
+name = "catppuccin-mocha"
+background = "#1e1e2e"   # base
+foreground = "#cdd6f4"   # text
+accent = "#cba6f7"       # mauve
+muted = "#6c7086"        # overlay0
+warn = "#f9e2af"         # yellow
+urgent = "#f38ba8"       # red
+surface = "#313244"      # surface0, for borders and empty progress cells
+success = "#a6e3a1"      # green, for healthy usage levels
+
+# Module order in the left / center / right sections of the bar.
+[layout]
+left = ["clock"]
+center = []
+right = []
+
+[modules.clock]
+format = "%H:%M:%S"
+interval_ms = 1000
