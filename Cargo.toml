@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "crates/wayward-core",
+    "crates/wayward-modules",
+    "crates/wayward-ai",
+    "crates/wayward-platform",
+    "crates/wayward-app",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.88"
+version = "0.1.0"
+
+[workspace.dependencies]
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "tokio"] }
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.2.1"
+dirs = "7.0.0"
+jiff = "1.0.1"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+anyhow = "1.0.104"
+windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_UI_HiDpi"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

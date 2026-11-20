@@ -1,0 +1,20 @@
+# Build artifacts
+/target
+
+# Agent workspace state
+.omo/
+
+# Rust
+**/*.rs.bk
+*.pdb
+*.profraw
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
