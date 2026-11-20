@@ -76,6 +76,16 @@ pub fn validate(config: &Config) -> Vec<String> {
         ));
     }
 
+    for (name, interval_ms) in [
+        ("cpu.interval_ms", config.modules.cpu.interval_ms),
+        ("ram.interval_ms", config.modules.ram.interval_ms),
+        ("battery.interval_ms", config.modules.battery.interval_ms),
+    ] {
+        if !(2000..=5000).contains(&interval_ms) {
+            errors.push(format!("{name} must be in 2000..=5000, got {interval_ms}"));
+        }
+    }
+
     errors
 }
 
@@ -185,6 +195,22 @@ mod tests {
         );
         assert!(
             errors.iter().any(|e| e.contains("background")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_flags_out_of_range_stat_interval() {
+        let mut config = Config::default();
+        config.modules.cpu.interval_ms = 1000;
+
+        let errors = validate(&config);
+
+        assert_eq!(errors.len(), 1, "unexpected errors: {errors:?}");
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("cpu.interval_ms") && e.contains("2000..=5000")),
             "{errors:?}"
         );
     }
