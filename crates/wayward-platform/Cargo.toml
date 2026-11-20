@@ -1,0 +1,8 @@
+[package]
+name = "wayward-platform"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+windows = { workspace = true }
