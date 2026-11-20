@@ -3,3 +3,10 @@ name = "wayward-modules"
 edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
+
+[dependencies]
+wayward-core = { path = "../wayward-core" }
+wayward-platform = { path = "../wayward-platform" }
+sysinfo = { workspace = true }
+jiff = { workspace = true }
+tracing = { workspace = true }
