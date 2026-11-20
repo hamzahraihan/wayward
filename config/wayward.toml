@@ -45,10 +45,19 @@ success = "#a6e3a1"      # green, for healthy usage levels
 
 # Module order in the left / center / right sections of the bar.
 [layout]
-left = ["clock"]
+left = ["clock", "cpu", "ram", "battery"]
 center = []
 right = []
 
 [modules.clock]
 format = "%H:%M:%S"
 interval_ms = 1000
+
+[modules.cpu]
+interval_ms = 2000  # stat poll interval, 2000..=5000
+
+[modules.ram]
+interval_ms = 3000  # stat poll interval, 2000..=5000
+
+[modules.battery]
+interval_ms = 5000  # stat poll interval, 2000..=5000
