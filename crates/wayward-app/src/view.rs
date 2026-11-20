@@ -1,30 +1,44 @@
 use iced::{Color, Element};
+use wayward_core::Config;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::style::{level_color, Colors};
+
+#[derive(Debug, Clone)]
 pub enum Message {
-    Tick,
+    Tick(&'static str),
+    Ready(wayward_platform::WindowHandle),
+    Rescaled(f32),
+    CloseRequested,
+    PlatformFailed(String),
 }
 
+/// Render one flat cell per module. Plain data in; no I/O here (AGENTS.md §3).
 pub fn view<'a>(
-    clock_text: &'a str,
-    colors: (Color, Color),
-    font_size: f32,
-    padding: f32,
+    cells: impl IntoIterator<Item = &'a wayward_core::ModuleState>,
+    colors: &'a Colors,
+    config: &'a Config,
 ) -> Element<'a, Message> {
-    let clock = iced::widget::text(clock_text)
-        .font(iced::Font {
-            family: iced::font::Family::Monospace,
-            ..Default::default()
-        })
-        .size(font_size)
-        .color(colors.1);
+    let mut row = iced::widget::Row::new().spacing(f32::from(config.bar.padding));
 
-    iced::widget::container(iced::widget::row![clock].spacing(padding))
+    for cell in cells {
+        row = row.push(
+            iced::widget::text(format!("{}{}", cell.icon, cell.text))
+                .font(iced::Font {
+                    family: iced::font::Family::Monospace,
+                    ..Default::default()
+                })
+                .size(config.font.size)
+                .color(level_color(cell.level, colors)),
+        );
+    }
+
+    let background: Color = colors.background;
+    iced::widget::container(row)
         .width(iced::Length::Fill)
-        .padding(padding)
+        .padding(f32::from(config.bar.padding))
         .style(move |_theme: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(colors.0)),
-            text_color: Some(colors.1),
+            background: Some(iced::Background::Color(background)),
+            text_color: Some(colors.foreground),
             ..Default::default()
         })
         .into()
