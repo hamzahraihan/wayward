@@ -1,0 +1,5 @@
+[package]
+name = "wayward-ai"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
