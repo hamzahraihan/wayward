@@ -1,0 +1,9 @@
+[package]
+name = "wayward-core"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+toml = { workspace = true }
