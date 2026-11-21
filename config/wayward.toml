@@ -70,7 +70,7 @@ interval_ms = 5000  # stat poll interval, 2000..=5000
 enabled = false         # set true to show the AI icon and popup
 mode = "mock"           # "mock" or "real"
 interval_ms = 300000    # provider poll interval (5 minutes)
-warn_below = 0.20       # warn when <=20% of a quota remains
+warn_below = 0.20       # warn when <=20% of a usage window remains
 urgent_below = 0.0      # urgent at 0 left / limit hit
 
 # Undocumented endpoints can break without notice and are never enabled by
@@ -83,7 +83,7 @@ urgent_below = 0.0      # urgent at 0 left / limit hit
 # enabled = false
 # interval_ms = 300000
 # root = "/path/to/claude"  # optional: override default local data location
-# limit = 1000000           # token quota, must be > 0
+# limit = 1000000           # token limit for the usage window, must be > 0
 # reset_after_secs = 18000
 # reset_anchor_secs = 1700000000  # optional epoch anchor; omit for a rolling window
 
