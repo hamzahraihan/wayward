@@ -61,3 +61,14 @@ interval_ms = 3000  # stat poll interval, 2000..=5000
 
 [modules.battery]
 interval_ms = 5000  # stat poll interval, 2000..=5000
+
+# AI usage module (developer/debug mode).
+# When enabled = true with mode = "mock", wayward shows a fake AI icon and popup
+# using deterministic local data — no network calls, no API keys, no credentials.
+# Other modes are reserved for a later milestone and will fail validation.
+[ai]
+enabled = false         # set true to test the AI icon + popup without real data
+mode = "mock"           # only "mock" is supported in this milestone
+interval_ms = 300000    # provider poll interval (5 minutes)
+warn_below = 0.20       # warn when <=20% of a quota remains
+urgent_below = 0.0      # urgent at 0 left / limit hit
