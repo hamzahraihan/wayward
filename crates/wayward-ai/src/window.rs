@@ -1,5 +1,7 @@
 use std::time::{Duration, SystemTime};
 
+use crate::Meter;
+
 pub fn next_reset(anchor: Option<u64>, reset_after_secs: u64, now: SystemTime) -> SystemTime {
     let window = reset_after_secs.max(1);
     let rolling = || {
@@ -33,6 +35,15 @@ pub fn next_reset(anchor: Option<u64>, reset_after_secs: u64, now: SystemTime) -
     SystemTime::UNIX_EPOCH
         .checked_add(Duration::from_secs(boundary))
         .unwrap_or_else(rolling)
+}
+
+pub fn window_meter(anchor: Option<u64>, reset_after_secs: u64, limit: f64, used: f64) -> Meter {
+    Meter {
+        label: "usage window".into(),
+        used,
+        limit,
+        reset_at: Some(next_reset(anchor, reset_after_secs, SystemTime::now())),
+    }
 }
 
 #[cfg(test)]
@@ -71,6 +82,16 @@ mod tests {
     #[test]
     fn zero_window_is_treated_as_one_second() {
         assert_eq!(next_reset(Some(100), 0, at(1_050, 0)), at(1_051, 0));
+    }
+
+    #[test]
+    fn window_meter_uses_the_glossary_label_and_anchor_boundary() {
+        let before = SystemTime::now();
+        let meter = window_meter(Some(100), 100, 500.0, 42.0);
+        assert_eq!(meter.label, "usage window");
+        assert_eq!(meter.used, 42.0);
+        assert_eq!(meter.limit, 500.0);
+        assert!(meter.reset_at.expect("meter has reset time") > before);
     }
 
     #[test]
