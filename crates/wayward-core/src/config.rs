@@ -388,7 +388,8 @@ mod tests {
     #[test]
     fn reset_anchor_defaults_to_none_and_parses_when_present() {
         let empty: Config = toml::from_str("").expect("empty TOML should deserialize");
-        assert!(empty.ai.providers.is_empty() || empty.ai.providers[0].reset_anchor_secs.is_none());
+        assert_eq!(empty, Config::default());
+        assert_eq!(AiProviderConfig::default().reset_anchor_secs, None);
 
         let parsed: Config = toml::from_str(
             "[ai]\n[[ai.providers]]\nid = \"claude-code\"\nreset_anchor_secs = 1700000000\n",
