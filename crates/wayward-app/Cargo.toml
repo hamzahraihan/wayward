@@ -10,7 +10,10 @@ dirs = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
+tokio = { workspace = true }
 toml = { workspace = true }
+notify = { workspace = true }
+wayward-ai = { path = "../wayward-ai" }
 wayward-core = { path = "../wayward-core" }
 wayward-modules = { path = "../wayward-modules" }
 wayward-platform = { path = "../wayward-platform" }
