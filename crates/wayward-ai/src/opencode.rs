@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use anyhow::Context;
 use async_trait::async_trait;
@@ -11,14 +11,21 @@ pub struct OpenCodeProvider {
     db_path: PathBuf,
     limit: f64,
     reset_after_secs: u64,
+    reset_anchor_secs: Option<u64>,
 }
 
 impl OpenCodeProvider {
-    pub fn new(db_path: PathBuf, limit: f64, reset_after_secs: u64) -> Self {
+    pub fn new(
+        db_path: PathBuf,
+        limit: f64,
+        reset_after_secs: u64,
+        reset_anchor_secs: Option<u64>,
+    ) -> Self {
         Self {
             db_path,
             limit,
             reset_after_secs,
+            reset_anchor_secs,
         }
     }
 }
@@ -53,13 +60,15 @@ impl UsageProvider for OpenCodeProvider {
             )
             .context("summing OpenCode session tokens")?;
 
-        let reset_at = SystemTime::now()
-            .checked_add(Duration::from_secs(self.reset_after_secs))
-            .context("reset time out of range")?;
+        let reset_at = crate::window::next_reset(
+            self.reset_anchor_secs,
+            self.reset_after_secs,
+            SystemTime::now(),
+        );
         Ok(Usage {
             plan: None,
             meters: vec![Meter {
-                label: "window tokens".into(),
+                label: "usage window".into(),
                 used: total as f64,
                 limit: self.limit,
                 reset_at: Some(reset_at),
@@ -149,14 +158,14 @@ mod tests {
         drop(connection);
 
         let before = SystemTime::now();
-        let mut provider = OpenCodeProvider::new(db_path, 500.0, 3_600);
+        let mut provider = OpenCodeProvider::new(db_path, 500.0, 3_600, None);
         let usage = block_on(provider.fetch()).expect("fetch should succeed");
 
         assert!(usage.plan.is_none());
         assert!(usage.spend.is_none());
         assert_eq!(usage.meters.len(), 1);
         let meter = &usage.meters[0];
-        assert_eq!(meter.label, "window tokens");
+        assert_eq!(meter.label, "usage window");
         assert_eq!(meter.used, 165.0);
         assert_eq!(meter.limit, 500.0);
         assert!(meter.reset_at.expect("meter has reset time") > before);
@@ -165,7 +174,7 @@ mod tests {
     #[test]
     fn id_is_opencode() {
         assert_eq!(
-            OpenCodeProvider::new(PathBuf::new(), 1.0, 1).id(),
+            OpenCodeProvider::new(PathBuf::new(), 1.0, 1, None).id(),
             "opencode"
         );
     }
@@ -173,7 +182,8 @@ mod tests {
     #[test]
     fn missing_database_returns_error() {
         let dir = TempPath::new("opencode-missing");
-        let mut provider = OpenCodeProvider::new(dir.path().join("opencode.db"), 500.0, 3_600);
+        let mut provider =
+            OpenCodeProvider::new(dir.path().join("opencode.db"), 500.0, 3_600, None);
 
         assert!(block_on(provider.fetch()).is_err());
     }
@@ -184,7 +194,7 @@ mod tests {
         let db_path = dir.path().join("opencode.db");
         let connection = create_db(&db_path, "CREATE TABLE other (id TEXT PRIMARY KEY)");
         drop(connection);
-        let mut provider = OpenCodeProvider::new(db_path, 500.0, 3_600);
+        let mut provider = OpenCodeProvider::new(db_path, 500.0, 3_600, None);
 
         assert!(block_on(provider.fetch()).is_err());
     }

@@ -3,6 +3,7 @@ pub mod level;
 pub mod mock;
 pub mod opencode;
 pub mod registry;
+pub mod window;
 
 #[cfg(test)]
 pub(crate) mod test_support {

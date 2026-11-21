@@ -219,6 +219,9 @@ pub fn validate(config: &Config) -> Vec<String> {
             if provider.reset_after_secs == 0 {
                 errors.push(format!("{prefix}.reset_after_secs must be > 0, got 0"));
             }
+            if provider.reset_anchor_secs == Some(0) {
+                errors.push(format!("{prefix}.reset_anchor_secs must be omitted or > 0"));
+            }
         }
     }
 
@@ -753,5 +756,17 @@ mod tests {
                 .any(|e| e.contains("ai.providers[0].reset_after_secs")),
             "{errors:?}"
         );
+    }
+
+    #[test]
+    fn validate_rejects_zero_reset_anchor_and_accepts_positive_anchor() {
+        let mut config = enabled_config_with_provider();
+        config.ai.providers[0].reset_anchor_secs = Some(0);
+        assert!(validate(&config)
+            .iter()
+            .any(|e| e.contains("ai.providers[0].reset_anchor_secs")));
+
+        config.ai.providers[0].reset_anchor_secs = Some(1_700_000_000);
+        assert!(validate(&config).is_empty());
     }
 }

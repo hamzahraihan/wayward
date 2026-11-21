@@ -36,14 +36,21 @@ pub struct ClaudeCodeProvider {
     root: PathBuf,
     limit: f64,
     reset_after_secs: u64,
+    reset_anchor_secs: Option<u64>,
 }
 
 impl ClaudeCodeProvider {
-    pub fn new(root: PathBuf, limit: f64, reset_after_secs: u64) -> Self {
+    pub fn new(
+        root: PathBuf,
+        limit: f64,
+        reset_after_secs: u64,
+        reset_anchor_secs: Option<u64>,
+    ) -> Self {
         Self {
             root,
             limit,
             reset_after_secs,
+            reset_anchor_secs,
         }
     }
 }
@@ -109,13 +116,15 @@ impl UsageProvider for ClaudeCodeProvider {
             }
         }
 
-        let reset_at = SystemTime::now()
-            .checked_add(Duration::from_secs(self.reset_after_secs))
-            .context("reset time out of range")?;
+        let reset_at = crate::window::next_reset(
+            self.reset_anchor_secs,
+            self.reset_after_secs,
+            SystemTime::now(),
+        );
         Ok(Usage {
             plan: None,
             meters: vec![Meter {
-                label: "window tokens".into(),
+                label: "usage window".into(),
                 used: total as f64,
                 limit: self.limit,
                 reset_at: Some(reset_at),
@@ -169,14 +178,14 @@ mod tests {
         write_jsonl(dir.path(), "conversation.jsonl", &lines);
 
         let before = SystemTime::now();
-        let mut provider = ClaudeCodeProvider::new(dir.path().to_path_buf(), 500.0, 3_600);
+        let mut provider = ClaudeCodeProvider::new(dir.path().to_path_buf(), 500.0, 3_600, None);
         let usage = block_on(provider.fetch()).expect("fetch should succeed");
 
         assert!(usage.plan.is_none());
         assert!(usage.spend.is_none());
         assert_eq!(usage.meters.len(), 1);
         let meter = &usage.meters[0];
-        assert_eq!(meter.label, "window tokens");
+        assert_eq!(meter.label, "usage window");
         assert_eq!(meter.used, 110.0);
         assert_eq!(meter.limit, 500.0);
         assert!(meter.reset_at.expect("meter has reset time") > before);
@@ -185,7 +194,7 @@ mod tests {
     #[test]
     fn id_is_claude_code() {
         assert_eq!(
-            ClaudeCodeProvider::new(PathBuf::new(), 1.0, 1).id(),
+            ClaudeCodeProvider::new(PathBuf::new(), 1.0, 1, None).id(),
             "claude-code"
         );
     }
@@ -193,7 +202,7 @@ mod tests {
     #[test]
     fn missing_root_returns_error() {
         let dir = TempPath::new("claude-missing");
-        let mut provider = ClaudeCodeProvider::new(dir.path().to_path_buf(), 500.0, 3_600);
+        let mut provider = ClaudeCodeProvider::new(dir.path().to_path_buf(), 500.0, 3_600, None);
 
         assert!(block_on(provider.fetch()).is_err());
     }
@@ -210,7 +219,7 @@ mod tests {
                 "{not json".to_owned(),
             ],
         );
-        let mut provider = ClaudeCodeProvider::new(dir.path().to_path_buf(), 500.0, 3_600);
+        let mut provider = ClaudeCodeProvider::new(dir.path().to_path_buf(), 500.0, 3_600, None);
 
         assert!(block_on(provider.fetch()).is_err());
     }
@@ -223,7 +232,7 @@ mod tests {
             "conversation.jsonl",
             &[assistant_line("not-a-time", 1, 2, 3, 4)],
         );
-        let mut provider = ClaudeCodeProvider::new(dir.path().to_path_buf(), 500.0, 3_600);
+        let mut provider = ClaudeCodeProvider::new(dir.path().to_path_buf(), 500.0, 3_600, None);
 
         assert!(block_on(provider.fetch()).is_err());
     }
@@ -243,7 +252,7 @@ mod tests {
                 assistant_line(&old, 1_000, 1_000, 1_000, 1_000),
             ],
         );
-        let mut provider = ClaudeCodeProvider::new(dir.path().to_path_buf(), 500.0, 3_600);
+        let mut provider = ClaudeCodeProvider::new(dir.path().to_path_buf(), 500.0, 3_600, None);
 
         let usage = block_on(provider.fetch()).expect("fetch should succeed");
         assert_eq!(usage.meters[0].used, 10.0);

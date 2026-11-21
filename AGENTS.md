@@ -261,3 +261,17 @@ Rules for providers:
 - Single AI icon with a working popup showing at least two real providers.
 - Theme and layout fully driven by `~\.config\.wayward\wayward.toml` with hot reload.
 - Every style option is editable from the settings GUI or by hand in the TOML, with both staying in sync.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in GitHub Issues for hamzahraihan/wayward. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles map directly to same-named GitHub labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one root `GLOSSARY.md` and `docs/adr/`. See `docs/agents/domain.md`.

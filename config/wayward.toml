@@ -85,6 +85,7 @@ urgent_below = 0.0      # urgent at 0 left / limit hit
 # root = "/path/to/claude"  # optional: override default local data location
 # limit = 1000000           # token quota, must be > 0
 # reset_after_secs = 18000
+# reset_anchor_secs = 1700000000  # optional epoch anchor; omit for a rolling window
 
 # [[ai.providers]]
 # id = "opencode"
@@ -92,3 +93,4 @@ urgent_below = 0.0      # urgent at 0 left / limit hit
 # interval_ms = 300000
 # limit = 1000000
 # reset_after_secs = 18000
+# reset_anchor_secs = 1700000000  # optional epoch anchor; omit for a rolling window

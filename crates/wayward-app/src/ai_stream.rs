@@ -6,7 +6,8 @@ use iced::futures::channel::mpsc;
 use iced::futures::sink::SinkExt;
 use iced::futures::{FutureExt, StreamExt};
 use iced::{stream, Subscription};
-use wayward_ai::level::{aggregate_level, URGENT_BELOW, WARN_BELOW};
+use tokio::time::Instant as TokioInstant;
+use wayward_ai::level::aggregate_level;
 use wayward_ai::registry::{build_providers, ProviderSpec};
 use wayward_core::config::{AiConfig, AiMode, AiProviderConfig};
 
@@ -44,6 +45,7 @@ pub struct AiProviderKey {
     pub root: Option<PathBuf>,
     pub limit_bits: u64,
     pub reset_after_secs: u64,
+    pub reset_anchor_secs: Option<u64>,
 }
 
 /// Stable identity for the AI poll subscription. Changing any field recreates
@@ -55,6 +57,8 @@ pub struct AiStreamKey {
     pub enabled: bool,
     pub interval_ms: u64,
     pub experimental: bool,
+    pub warn_below_bits: u32,
+    pub urgent_below_bits: u32,
     pub providers: Vec<AiProviderKey>,
 }
 
@@ -68,13 +72,15 @@ impl Hash for AiStreamKey {
         self.enabled.hash(state);
         self.interval_ms.hash(state);
         self.experimental.hash(state);
+        self.warn_below_bits.hash(state);
+        self.urgent_below_bits.hash(state);
         self.providers.hash(state);
     }
 }
 
 struct ProviderState {
     spec: ProviderSpec,
-    next_due: Instant,
+    next_due: TokioInstant,
     failures: u32,
 }
 
@@ -88,8 +94,8 @@ fn config_from_key(key: &AiStreamKey) -> AiConfig {
         enabled: key.enabled,
         mode: key.mode,
         interval_ms: key.interval_ms,
-        warn_below: WARN_BELOW,
-        urgent_below: URGENT_BELOW,
+        warn_below: f32::from_bits(key.warn_below_bits),
+        urgent_below: f32::from_bits(key.urgent_below_bits),
         experimental: key.experimental,
         providers: key
             .providers
@@ -101,12 +107,15 @@ fn config_from_key(key: &AiStreamKey) -> AiConfig {
                 root: provider.root.clone(),
                 limit: f64::from_bits(provider.limit_bits),
                 reset_after_secs: provider.reset_after_secs,
+                reset_anchor_secs: provider.reset_anchor_secs,
             })
             .collect(),
     }
 }
 
 fn build_stream(key: &AiStreamKey) -> impl iced::futures::Stream<Item = Message> {
+    let warn_below_bits = key.warn_below_bits;
+    let urgent_below_bits = key.urgent_below_bits;
     let config = config_from_key(key);
     let home = dirs::home_dir().unwrap_or_default();
     let mut states: Vec<ProviderState> = build_providers(&config, &home)
@@ -115,7 +124,7 @@ fn build_stream(key: &AiStreamKey) -> impl iced::futures::Stream<Item = Message>
             spec.interval = spec.interval.max(MIN_INTERVAL);
             ProviderState {
                 spec,
-                next_due: Instant::now(),
+                next_due: TokioInstant::now(),
                 failures: 0,
             }
         })
@@ -133,25 +142,22 @@ fn build_stream(key: &AiStreamKey) -> impl iced::futures::Stream<Item = Message>
                 .iter()
                 .map(|state| state.next_due)
                 .min()
-                .unwrap_or_else(|| Instant::now() + IDLE_POLL);
+                .unwrap_or_else(|| TokioInstant::now() + IDLE_POLL);
 
-            // `tokio::select!` needs tokio's `macros` feature, which this
-            // workspace does not enable. The futures re-export from iced gives
-            // the same wake-up semantics with the futures already in scope.
             iced::futures::select! {
-                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(earliest)).fuse() => {}
+                _ = tokio::time::sleep_until(earliest).fuse() => {}
                 refresh = refresh_rx.next().fuse() => {
                     if refresh.is_none() {
                         return;
                     }
-                    let now = Instant::now();
+                    let now = TokioInstant::now();
                     for state in &mut states {
                         state.next_due = now;
                     }
                 }
             }
 
-            let now = Instant::now();
+            let now = TokioInstant::now();
             for state in &mut states {
                 if state.next_due > now {
                     continue;
@@ -161,8 +167,12 @@ fn build_stream(key: &AiStreamKey) -> impl iced::futures::Stream<Item = Message>
                 match state.spec.provider.fetch().await {
                     Ok(usage) => {
                         state.failures = 0;
-                        state.next_due = Instant::now() + state.spec.interval;
-                        let level = aggregate_level(&usage, WARN_BELOW, URGENT_BELOW);
+                        state.next_due = TokioInstant::now() + state.spec.interval;
+                        let level = aggregate_level(
+                            &usage,
+                            f32::from_bits(warn_below_bits),
+                            f32::from_bits(urgent_below_bits),
+                        );
                         if output
                             .send(Message::AiFetched {
                                 provider_id,
@@ -183,7 +193,7 @@ fn build_stream(key: &AiStreamKey) -> impl iced::futures::Stream<Item = Message>
                             state.failures,
                             MAX_BACKOFF_MULTIPLIER,
                         );
-                        state.next_due = Instant::now() + delay;
+                        state.next_due = TokioInstant::now() + delay;
                         if output
                             .send(Message::AiFetchFailed {
                                 provider_id,
@@ -247,5 +257,55 @@ mod tests {
             backoff_delay(interval(), u32::MAX, MAX_BACKOFF_MULTIPLIER),
             Duration::from_millis(8_000)
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn failing_provider_backoff_gaps_grow_and_cap() {
+        let interval_ms = 60_000u64;
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock is after epoch")
+            .as_nanos();
+        let key = AiStreamKey {
+            mode: AiMode::Real,
+            enabled: true,
+            interval_ms,
+            experimental: false,
+            warn_below_bits: 0.2f32.to_bits(),
+            urgent_below_bits: 0.0f32.to_bits(),
+            providers: vec![AiProviderKey {
+                id: "claude-code".to_owned(),
+                enabled: true,
+                interval_ms,
+                root: Some(std::env::temp_dir().join(format!(
+                    "wayward-backoff-missing-{}-{nanos}",
+                    std::process::id()
+                ))),
+                limit_bits: 1_000_000.0f64.to_bits(),
+                reset_after_secs: 3_600,
+                reset_anchor_secs: None,
+            }],
+        };
+
+        let mut stream = Box::pin(build_stream(&key));
+        let refresh_tx = match stream.next().await {
+            Some(Message::AiReady { refresh_tx }) => refresh_tx,
+            other => panic!("expected AiReady, got {other:?}"),
+        };
+
+        let mut stamps = Vec::new();
+        for _ in 0..5 {
+            match stream.next().await {
+                Some(Message::AiFetchFailed { .. }) => {}
+                other => panic!("expected AiFetchFailed, got {other:?}"),
+            }
+            stamps.push(TokioInstant::now());
+        }
+
+        let gaps: Vec<_> = stamps.windows(2).map(|pair| pair[1] - pair[0]).collect();
+        for (gap, multiplier) in gaps.iter().zip([2u64, 4, 8, 16, 16]) {
+            assert_eq!(*gap, Duration::from_secs(interval_ms / 1_000 * multiplier));
+        }
+        drop(refresh_tx);
     }
 }

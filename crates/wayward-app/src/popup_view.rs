@@ -9,7 +9,7 @@ use std::time::{Instant, SystemTime};
 use iced::widget::{container, row, text, Column, Container, Row};
 use iced::Element;
 
-use wayward_ai::level::{format_remaining, meter_level, percent_used, URGENT_BELOW, WARN_BELOW};
+use wayward_ai::level::{format_remaining, meter_level, percent_used};
 use wayward_ai::Usage;
 use wayward_core::Level;
 
@@ -24,6 +24,8 @@ pub struct AiSnapshot {
     pub level: Level,
     pub fetched_at: Instant,
     pub error: Option<String>,
+    pub warn_below: f32,
+    pub urgent_below: f32,
 }
 
 /// Record a successful refresh, replacing the matching provider in place.
@@ -33,6 +35,8 @@ pub fn apply_fetched(
     usage: Usage,
     level: Level,
     fetched_at: Instant,
+    warn_below: f32,
+    urgent_below: f32,
 ) {
     if let Some(snapshot) = snapshots
         .iter_mut()
@@ -42,6 +46,8 @@ pub fn apply_fetched(
         snapshot.level = level;
         snapshot.fetched_at = fetched_at;
         snapshot.error = None;
+        snapshot.warn_below = warn_below;
+        snapshot.urgent_below = urgent_below;
     } else {
         snapshots.push(AiSnapshot {
             provider_id,
@@ -49,12 +55,20 @@ pub fn apply_fetched(
             level,
             fetched_at,
             error: None,
+            warn_below,
+            urgent_below,
         });
     }
 }
 
 /// Record a failed refresh without disturbing the last successful data.
-pub fn apply_failed(snapshots: &mut Vec<AiSnapshot>, provider_id: String, error: String) {
+pub fn apply_failed(
+    snapshots: &mut Vec<AiSnapshot>,
+    provider_id: String,
+    error: String,
+    warn_below: f32,
+    urgent_below: f32,
+) {
     if let Some(snapshot) = snapshots
         .iter_mut()
         .find(|snapshot| snapshot.provider_id == provider_id)
@@ -67,6 +81,8 @@ pub fn apply_failed(snapshots: &mut Vec<AiSnapshot>, provider_id: String, error:
             level: Level::Normal,
             fetched_at: Instant::now(),
             error: Some(error),
+            warn_below,
+            urgent_below,
         });
     }
 }
@@ -164,7 +180,7 @@ pub fn popup<'a>(
                 let used = percent_used(meter.used, meter.limit);
                 let percent = if show_left { 1.0 - used } else { used };
                 let filled = ((percent * CELL_COUNT as f32).round() as usize).clamp(0, CELL_COUNT);
-                let meter_level = meter_level(meter, WARN_BELOW, URGENT_BELOW);
+                let meter_level = meter_level(meter, snapshot.warn_below, snapshot.urgent_below);
                 let filled_color = level_color(meter_level, colors);
 
                 let mut bar = Row::new().spacing(1.0);
@@ -261,6 +277,45 @@ mod tests {
         Instant::now() - Duration::from_secs(secs)
     }
 
+    const TEST_WARN: f32 = 0.20;
+    const TEST_URGENT: f32 = 0.0;
+
+    #[test]
+    fn configured_thresholds_reach_fetched_and_failed_snapshots() {
+        let mut snapshots = Vec::new();
+        apply_fetched(
+            &mut snapshots,
+            "mock".to_owned(),
+            usage("session", 10.0),
+            Level::Normal,
+            ago(1),
+            0.35,
+            0.05,
+        );
+        assert_eq!(snapshots[0].warn_below, 0.35);
+        assert_eq!(snapshots[0].urgent_below, 0.05);
+
+        apply_failed(
+            &mut snapshots,
+            "mock".to_owned(),
+            "boom".to_owned(),
+            0.9,
+            0.8,
+        );
+        assert_eq!(snapshots[0].warn_below, 0.35);
+        assert_eq!(snapshots[0].urgent_below, 0.05);
+
+        apply_failed(
+            &mut snapshots,
+            "new".to_owned(),
+            "boom".to_owned(),
+            0.9,
+            0.8,
+        );
+        assert_eq!(snapshots[1].warn_below, 0.9);
+        assert_eq!(snapshots[1].urgent_below, 0.8);
+    }
+
     #[test]
     fn reload_prunes_snapshots_for_removed_providers() {
         let mut snapshots = Vec::new();
@@ -270,6 +325,8 @@ mod tests {
             usage("session", 10.0),
             Level::Normal,
             ago(5),
+            TEST_WARN,
+            TEST_URGENT,
         );
         apply_fetched(
             &mut snapshots,
@@ -277,6 +334,8 @@ mod tests {
             usage("session", 20.0),
             Level::Normal,
             ago(5),
+            TEST_WARN,
+            TEST_URGENT,
         );
 
         retain_provider_snapshots(&mut snapshots, &["opencode".to_owned()]);
@@ -300,10 +359,18 @@ mod tests {
             usage("session", 62.0),
             Level::Warn,
             fetched_at,
+            TEST_WARN,
+            TEST_URGENT,
         );
         let before = snapshots[0].clone();
 
-        apply_failed(&mut snapshots, "mock".to_owned(), "boom".to_owned());
+        apply_failed(
+            &mut snapshots,
+            "mock".to_owned(),
+            "boom".to_owned(),
+            TEST_WARN,
+            TEST_URGENT,
+        );
 
         assert_eq!(snapshots.len(), 1);
         assert_eq!(snapshots[0].provider_id, "mock");
@@ -318,7 +385,13 @@ mod tests {
         let mut snapshots = Vec::new();
         let before = Instant::now();
 
-        apply_failed(&mut snapshots, "claude-code".to_owned(), "boom".to_owned());
+        apply_failed(
+            &mut snapshots,
+            "claude-code".to_owned(),
+            "boom".to_owned(),
+            TEST_WARN,
+            TEST_URGENT,
+        );
         let after = Instant::now();
 
         assert_eq!(snapshots.len(), 1);
@@ -332,7 +405,13 @@ mod tests {
     #[test]
     fn fetched_replaces_snapshot_and_clears_error() {
         let mut snapshots = Vec::new();
-        apply_failed(&mut snapshots, "claude-code".to_owned(), "boom".to_owned());
+        apply_failed(
+            &mut snapshots,
+            "claude-code".to_owned(),
+            "boom".to_owned(),
+            TEST_WARN,
+            TEST_URGENT,
+        );
         let fetched_at = ago(5);
 
         apply_fetched(
@@ -341,6 +420,8 @@ mod tests {
             usage("weekly", 100.0),
             Level::Urgent,
             fetched_at,
+            TEST_WARN,
+            TEST_URGENT,
         );
 
         assert_eq!(snapshots.len(), 1);
@@ -359,6 +440,8 @@ mod tests {
             usage("b", 1.0),
             Level::Normal,
             ago(3),
+            TEST_WARN,
+            TEST_URGENT,
         );
         apply_fetched(
             &mut snapshots,
@@ -366,6 +449,8 @@ mod tests {
             usage("a", 2.0),
             Level::Normal,
             ago(2),
+            TEST_WARN,
+            TEST_URGENT,
         );
         apply_fetched(
             &mut snapshots,
@@ -373,6 +458,8 @@ mod tests {
             usage("c", 3.0),
             Level::Normal,
             ago(1),
+            TEST_WARN,
+            TEST_URGENT,
         );
 
         assert_eq!(
@@ -389,6 +476,8 @@ mod tests {
             usage("a", 9.0),
             Level::Warn,
             ago(0),
+            TEST_WARN,
+            TEST_URGENT,
         );
 
         assert_eq!(

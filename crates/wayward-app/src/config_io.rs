@@ -82,6 +82,7 @@ fn known_keys() -> BTreeSet<&'static str> {
         "root",
         "limit",
         "reset_after_secs",
+        "reset_anchor_secs",
     ])
 }
 
@@ -621,7 +622,7 @@ mod tests {
             temp.0.join("wayward.toml"),
             "[ai]\nmode = \"mock\"\nexperimental = true\n\
              [[ai.providers]]\nid = \"claude-code\"\nenabled = false\ninterval_ms = 300000\n\
-             root = \"/tmp/claude\"\nlimit = 1000000.0\nreset_after_secs = 18000\n",
+             root = \"/tmp/claude\"\nlimit = 1000000.0\nreset_after_secs = 18000\nreset_anchor_secs = 1700000000\n",
         )
         .expect("write config");
         let mut context = context_at(&temp.0);
@@ -631,6 +632,10 @@ mod tests {
                 assert!(config.ai.experimental);
                 assert_eq!(config.ai.providers.len(), 1);
                 assert_eq!(config.ai.providers[0].id, "claude-code");
+                assert_eq!(
+                    config.ai.providers[0].reset_anchor_secs,
+                    Some(1_700_000_000)
+                );
                 for key in [
                     "experimental",
                     "providers",
@@ -638,6 +643,7 @@ mod tests {
                     "root",
                     "limit",
                     "reset_after_secs",
+                    "reset_anchor_secs",
                 ] {
                     assert!(
                         !warnings.iter().any(|warning| warning.contains(key)),

@@ -54,6 +54,7 @@ pub fn build_providers(config: &AiConfig, home: &Path) -> Vec<ProviderSpec> {
                 let interval = Duration::from_millis(entry.interval_ms);
                 let limit = entry.limit;
                 let reset_after_secs = entry.reset_after_secs;
+                let reset_anchor_secs = entry.reset_anchor_secs;
                 match entry.id.as_str() {
                     "claude-code" => {
                         let root = entry.root.clone().unwrap_or_else(|| home.join(".claude"));
@@ -64,12 +65,14 @@ pub fn build_providers(config: &AiConfig, home: &Path) -> Vec<ProviderSpec> {
                                 root.clone(),
                                 limit,
                                 reset_after_secs,
+                                reset_anchor_secs,
                             )),
                             rebuild: Arc::new(move || {
                                 Box::new(ClaudeCodeProvider::new(
                                     root.clone(),
                                     limit,
                                     reset_after_secs,
+                                    reset_anchor_secs,
                                 ))
                             }),
                         })
@@ -86,12 +89,14 @@ pub fn build_providers(config: &AiConfig, home: &Path) -> Vec<ProviderSpec> {
                                 db_path.clone(),
                                 limit,
                                 reset_after_secs,
+                                reset_anchor_secs,
                             )),
                             rebuild: Arc::new(move || {
                                 Box::new(OpenCodeProvider::new(
                                     db_path.clone(),
                                     limit,
                                     reset_after_secs,
+                                    reset_anchor_secs,
                                 ))
                             }),
                         })
@@ -133,6 +138,7 @@ mod tests {
             root: None,
             limit: 500.0,
             reset_after_secs: 3_600,
+            reset_anchor_secs: None,
         }
     }
 

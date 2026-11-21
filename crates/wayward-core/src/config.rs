@@ -163,6 +163,7 @@ pub struct AiProviderConfig {
     pub root: Option<std::path::PathBuf>,
     pub limit: f64,
     pub reset_after_secs: u64,
+    pub reset_anchor_secs: Option<u64>,
 }
 
 impl Default for AiProviderConfig {
@@ -174,6 +175,7 @@ impl Default for AiProviderConfig {
             root: None,
             limit: 0.0,
             reset_after_secs: 18_000,
+            reset_anchor_secs: None,
         }
     }
 }
@@ -381,5 +383,20 @@ mod tests {
         assert_eq!(second.root, None);
         assert_eq!(second.limit, 0.0);
         assert_eq!(second.reset_after_secs, 18_000);
+    }
+
+    #[test]
+    fn reset_anchor_defaults_to_none_and_parses_when_present() {
+        let empty: Config = toml::from_str("").expect("empty TOML should deserialize");
+        assert!(empty.ai.providers.is_empty() || empty.ai.providers[0].reset_anchor_secs.is_none());
+
+        let parsed: Config = toml::from_str(
+            "[ai]\n[[ai.providers]]\nid = \"claude-code\"\nreset_anchor_secs = 1700000000\n",
+        )
+        .expect("anchor should deserialize");
+        assert_eq!(
+            parsed.ai.providers[0].reset_anchor_secs,
+            Some(1_700_000_000)
+        );
     }
 }

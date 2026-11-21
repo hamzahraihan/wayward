@@ -23,7 +23,7 @@ tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 anyhow = "1.0.104"
 async-trait = "0.1.92"
-tokio = { version = "1.54.1", features = ["time", "rt"] }
+tokio = { version = "1.54.1", features = ["time", "rt", "macros", "test-util"] }
 serde_json = "1.0.154"
 rusqlite = { version = "0.43.0", features = ["bundled"] }
 sysinfo = "0.40.4"

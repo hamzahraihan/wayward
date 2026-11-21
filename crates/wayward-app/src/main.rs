@@ -381,6 +381,8 @@ fn update(state: &mut AppState, message: Message) -> Task<Message> {
                     usage,
                     level,
                     fetched_at,
+                    state.config.ai.warn_below,
+                    state.config.ai.urgent_below,
                 );
             }
             Task::none()
@@ -388,7 +390,13 @@ fn update(state: &mut AppState, message: Message) -> Task<Message> {
         Message::AiFetchFailed { provider_id, error } => {
             if let Some(controller) = state.ai.as_mut() {
                 tracing::warn!(provider = %provider_id, "AI provider refresh failed");
-                apply_failed(&mut controller.snapshots, provider_id, error);
+                apply_failed(
+                    &mut controller.snapshots,
+                    provider_id,
+                    error,
+                    state.config.ai.warn_below,
+                    state.config.ai.urgent_below,
+                );
             }
             Task::none()
         }
@@ -501,6 +509,8 @@ fn subscription(state: &AppState) -> Subscription<Message> {
             enabled: ai.enabled,
             interval_ms: ai.interval_ms,
             experimental: ai.experimental,
+            warn_below_bits: ai.warn_below.to_bits(),
+            urgent_below_bits: ai.urgent_below.to_bits(),
             providers: ai
                 .providers
                 .iter()
@@ -511,6 +521,7 @@ fn subscription(state: &AppState) -> Subscription<Message> {
                     root: provider.root.clone(),
                     limit_bits: provider.limit.to_bits(),
                     reset_after_secs: provider.reset_after_secs,
+                    reset_anchor_secs: provider.reset_anchor_secs,
                 })
                 .collect(),
         }));
