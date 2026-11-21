@@ -1,0 +1,10 @@
+# Catppuccin Mocha — bundled default theme.
+name = "catppuccin-mocha"
+background = "#1e1e2e"   # base
+foreground = "#cdd6f4"   # text
+accent = "#cba6f7"       # mauve
+muted = "#6c7086"        # overlay0
+warn = "#f9e2af"         # yellow
+urgent = "#f38ba8"       # red
+surface = "#313244"      # surface0
+success = "#a6e3a1"      # green
