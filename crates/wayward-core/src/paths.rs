@@ -1,10 +1,12 @@
 use std::ffi::OsStr;
 use std::fs::{create_dir_all, OpenOptions};
-use std::io::{ErrorKind, Result, Write};
-use std::path::{Path, PathBuf};
+use std::io::{Error, ErrorKind, Result, Write};
+use std::path::{Component, Path, PathBuf};
 
 pub const CONFIG_DIR_SEGMENTS: &str = ".config/.wayward";
 pub const CONFIG_FILE_NAME: &str = "wayward.toml";
+pub const THEMES_DIR_NAME: &str = "themes";
+pub const DEFAULT_THEME_NAME: &str = "catppuccin-mocha";
 
 pub fn resolve_config_dir(home: Option<&Path>, override_dir: Option<&OsStr>) -> Option<PathBuf> {
     match override_dir {
@@ -25,6 +27,41 @@ pub fn ensure_default_config(dir: &Path, template: &str) -> Result<bool> {
         .create_new(true)
         .open(config_file(dir))
     {
+        Ok(file) => file,
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    file.write_all(template.as_bytes())?;
+    Ok(true)
+}
+
+pub fn themes_dir(dir: &Path) -> PathBuf {
+    dir.join(THEMES_DIR_NAME)
+}
+
+pub fn theme_file(dir: &Path, name: &str) -> Option<PathBuf> {
+    if name.is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") {
+        return None;
+    }
+
+    let mut components = Path::new(name).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(_)), None) => Some(themes_dir(dir).join(format!("{name}.toml"))),
+        _ => None,
+    }
+}
+
+pub fn ensure_default_theme(dir: &Path, name: &str, template: &str) -> Result<bool> {
+    create_dir_all(themes_dir(dir))?;
+
+    let path = theme_file(dir, name).ok_or_else(|| {
+        Error::new(
+            ErrorKind::InvalidInput,
+            "theme name is not a single path component",
+        )
+    })?;
+
+    let mut file = match OpenOptions::new().write(true).create_new(true).open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == ErrorKind::AlreadyExists => return Ok(false),
         Err(error) => return Err(error),
@@ -133,5 +170,89 @@ mod tests {
         assert!(!ensure_default_config(&dir, "# default template\n")
             .expect("existing config is not an error"));
         assert_eq!(fs::read(config_file(&dir)).expect("read config"), original);
+    }
+
+    #[test]
+    fn themes_dir_joins_themes_name() {
+        let dir = Path::new("/some/config/dir");
+
+        assert_eq!(themes_dir(dir), dir.join("themes"));
+    }
+
+    #[test]
+    fn theme_file_builds_exact_path_for_valid_name() {
+        let dir = Path::new("/some/config/dir");
+
+        assert_eq!(
+            theme_file(dir, "catppuccin-mocha"),
+            Some(dir.join("themes").join("catppuccin-mocha.toml"))
+        );
+    }
+
+    #[test]
+    fn theme_file_rejects_invalid_names() {
+        let dir = Path::new("/some/config/dir");
+
+        for name in [
+            "",
+            "/",
+            "\\",
+            "..",
+            ".",
+            "a/b",
+            "a\\b",
+            "a..b",
+            "../secret",
+            "foo/../bar",
+            "foo\\..\\bar",
+        ] {
+            assert_eq!(theme_file(dir, name), None, "expected None for {name:?}");
+        }
+    }
+
+    #[test]
+    fn ensure_default_theme_creates_file_with_exact_bytes() {
+        let temp = TempDir::new("theme-create");
+        let dir = temp.0.join("nested").join("config");
+        let template = "# theme\nname = \"x\"\n";
+
+        assert!(ensure_default_theme(&dir, "x", template).expect("create theme"));
+        assert_eq!(
+            fs::read(theme_file(&dir, "x").expect("valid name")).expect("read theme"),
+            template.as_bytes()
+        );
+    }
+
+    #[test]
+    fn ensure_default_theme_does_not_overwrite_existing_file() {
+        let temp = TempDir::new("theme-no-overwrite");
+        let dir = temp.0.join("config");
+        let themes = themes_dir(&dir);
+        fs::create_dir_all(&themes).expect("create themes dir");
+        let original = b"# user comment: keep me\nname = \"custom\"\n";
+        fs::write(themes.join("custom.toml"), original).expect("write existing theme");
+
+        assert!(!ensure_default_theme(&dir, "custom", "# default\n")
+            .expect("existing theme is not an error"));
+        assert_eq!(
+            fs::read(themes.join("custom.toml")).expect("read theme"),
+            original
+        );
+    }
+
+    #[test]
+    fn ensure_default_theme_create_new_does_not_truncate() {
+        let temp = TempDir::new("theme-no-truncate");
+        let dir = temp.0.join("config");
+        let themes = themes_dir(&dir);
+        fs::create_dir_all(&themes).expect("create themes dir");
+        let original = b"# a much longer pre-existing theme file\nname = \"keep\"\nbackground = \"#000000\"\nforeground = \"#ffffff\"\n";
+        fs::write(themes.join("keep.toml"), original).expect("write existing theme");
+
+        assert!(!ensure_default_theme(&dir, "keep", "short\n").expect("existing theme"));
+        assert_eq!(
+            fs::read(themes.join("keep.toml")).expect("read theme"),
+            original
+        );
     }
 }
