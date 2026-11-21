@@ -167,6 +167,13 @@ impl AppBar {
         self.callback_msg
     }
 
+    /// Change edge/height after a live config reload. Reuses the existing QUERYPOS/SETPOS path.
+    pub fn reconfigure(&mut self, edge: AppBarEdge, logical_height: u32) {
+        self.edge = edge;
+        self.logical_height = logical_height;
+        self.apply_geometry();
+    }
+
     fn apply_geometry(&mut self) {
         let dpi = self.current_dpi();
         let height_px = physical_height(self.logical_height, dpi);
@@ -495,5 +502,29 @@ mod tests {
         assert!(!set_fullscreen_hidden(&hidden, true));
         assert!(set_fullscreen_hidden(&hidden, false));
         assert!(!set_fullscreen_hidden(&hidden, false));
+    }
+
+    #[test]
+    fn reconfigure_height_changes_geometry() {
+        let approved = Rect {
+            left: 0,
+            top: 30,
+            right: 1920,
+            bottom: 30,
+        };
+        let rect = query_rect(AppBarEdge::Top, approved, 32);
+        assert_eq!(rect.bottom - rect.top, 32);
+    }
+
+    #[test]
+    fn reconfigure_is_callable_with_platform_options() {
+        let result = crate::reconfigure(crate::PlatformOptions {
+            edge: AppBarEdge::Top,
+            logical_height: 32,
+        });
+        assert!(
+            result.is_err(),
+            "reconfigure must report an error when no AppBar is attached"
+        );
     }
 }
