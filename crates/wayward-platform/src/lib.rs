@@ -63,6 +63,19 @@ pub fn attach(hwnd: WindowHandle, options: PlatformOptions) -> Result<(), String
     Ok(())
 }
 
+pub fn reconfigure(options: PlatformOptions) -> Result<(), String> {
+    ACTIVE.with(|slot| {
+        let mut guard = slot.borrow_mut();
+        let guard = guard
+            .as_mut()
+            .ok_or_else(|| "AppBar is not attached".to_owned())?;
+        guard
+            .appbar
+            .reconfigure(options.edge, options.logical_height);
+        Ok(())
+    })
+}
+
 /// Deterministic shutdown: ABM_REMOVE + subclass removal + console unregister.
 /// Idempotent. Called from the iced close path.
 pub fn shutdown() {
