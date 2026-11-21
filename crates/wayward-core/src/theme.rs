@@ -1,4 +1,5 @@
-use crate::config::{Config, ThemeConfig};
+use crate::config::{AiMode, Config, ThemeConfig};
+use serde::Deserialize;
 
 pub const BACKGROUND: &str = "#1e1e2e";
 pub const FOREGROUND: &str = "#cdd6f4";
@@ -20,6 +21,86 @@ pub fn catppuccin_mocha() -> ThemeConfig {
         urgent: URGENT.to_owned(),
         surface: SURFACE.to_owned(),
         success: SUCCESS.to_owned(),
+    }
+}
+
+/// A named theme file. Every field is optional: absent keys fall back to the
+/// inline config value, then to Catppuccin Mocha (AGENTS.md §5.1).
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct ThemeFile {
+    pub name: Option<String>,
+    pub background: Option<String>,
+    pub foreground: Option<String>,
+    pub accent: Option<String>,
+    pub muted: Option<String>,
+    pub warn: Option<String>,
+    pub urgent: Option<String>,
+    pub surface: Option<String>,
+    pub success: Option<String>,
+}
+
+/// Named-file value (valid hex) > inline value (valid hex) > Catppuccin constant.
+/// name: file non-empty > inline non-empty > "catppuccin-mocha".
+pub fn resolve_theme(inline: &ThemeConfig, file: Option<&ThemeFile>) -> ThemeConfig {
+    let fallback = catppuccin_mocha();
+
+    let pick = |file_value: Option<&str>, inline_value: &str, default: &str| -> String {
+        match file_value {
+            Some(value) if parse_hex_rgb(value).is_some() => value.to_owned(),
+            _ if parse_hex_rgb(inline_value).is_some() => inline_value.to_owned(),
+            _ => default.to_owned(),
+        }
+    };
+
+    let name = match file.and_then(|f| f.name.as_deref()) {
+        Some(value) if !value.is_empty() => value.to_owned(),
+        _ if !inline.name.is_empty() => inline.name.clone(),
+        _ => fallback.name.clone(),
+    };
+
+    ThemeConfig {
+        name,
+        background: pick(
+            file.and_then(|f| f.background.as_deref()),
+            &inline.background,
+            &fallback.background,
+        ),
+        foreground: pick(
+            file.and_then(|f| f.foreground.as_deref()),
+            &inline.foreground,
+            &fallback.foreground,
+        ),
+        accent: pick(
+            file.and_then(|f| f.accent.as_deref()),
+            &inline.accent,
+            &fallback.accent,
+        ),
+        muted: pick(
+            file.and_then(|f| f.muted.as_deref()),
+            &inline.muted,
+            &fallback.muted,
+        ),
+        warn: pick(
+            file.and_then(|f| f.warn.as_deref()),
+            &inline.warn,
+            &fallback.warn,
+        ),
+        urgent: pick(
+            file.and_then(|f| f.urgent.as_deref()),
+            &inline.urgent,
+            &fallback.urgent,
+        ),
+        surface: pick(
+            file.and_then(|f| f.surface.as_deref()),
+            &inline.surface,
+            &fallback.surface,
+        ),
+        success: pick(
+            file.and_then(|f| f.success.as_deref()),
+            &inline.success,
+            &fallback.success,
+        ),
     }
 }
 
@@ -83,6 +164,39 @@ pub fn validate(config: &Config) -> Vec<String> {
     ] {
         if !(2000..=5000).contains(&interval_ms) {
             errors.push(format!("{name} must be in 2000..=5000, got {interval_ms}"));
+        }
+    }
+
+    if config.ai.enabled {
+        let ai = &config.ai;
+        if ai.mode == AiMode::Unsupported {
+            errors.push(
+                "ai.mode is reserved for a later milestone; only \"mock\" is supported".to_owned(),
+            );
+        }
+        if ai.interval_ms < 30_000 {
+            errors.push(format!(
+                "ai.interval_ms must be at least 30000, got {}",
+                ai.interval_ms
+            ));
+        }
+        if !(0.0..=1.0).contains(&ai.warn_below) {
+            errors.push(format!(
+                "ai.warn_below must be in 0.0..=1.0, got {}",
+                ai.warn_below
+            ));
+        }
+        if !(0.0..=1.0).contains(&ai.urgent_below) {
+            errors.push(format!(
+                "ai.urgent_below must be in 0.0..=1.0, got {}",
+                ai.urgent_below
+            ));
+        }
+        if ai.warn_below < ai.urgent_below {
+            errors.push(format!(
+                "ai.warn_below must be >= ai.urgent_below, got {} < {}",
+                ai.warn_below, ai.urgent_below
+            ));
         }
     }
 
@@ -277,5 +391,241 @@ mod tests {
         config.theme.name = String::new();
 
         assert_eq!(effective_theme(&config).name, "catppuccin-mocha");
+    }
+
+    #[test]
+    fn resolve_theme_file_hex_overrides_inline() {
+        let inline = ThemeConfig {
+            background: "#111111".to_owned(),
+            foreground: "#222222".to_owned(),
+            ..ThemeConfig::default()
+        };
+
+        let file = ThemeFile {
+            background: Some("#aaaaaa".to_owned()),
+            foreground: Some("#bbbbbb".to_owned()),
+            ..ThemeFile::default()
+        };
+
+        let resolved = resolve_theme(&inline, Some(&file));
+        assert_eq!(resolved.background, "#aaaaaa");
+        assert_eq!(resolved.foreground, "#bbbbbb");
+    }
+
+    #[test]
+    fn resolve_theme_invalid_file_hex_falls_back_to_inline() {
+        let inline = ThemeConfig {
+            background: "#123456".to_owned(),
+            ..ThemeConfig::default()
+        };
+
+        let file = ThemeFile {
+            background: Some("red".to_owned()),
+            ..ThemeFile::default()
+        };
+
+        let resolved = resolve_theme(&inline, Some(&file));
+        assert_eq!(resolved.background, "#123456");
+    }
+
+    #[test]
+    fn resolve_theme_missing_file_field_falls_back_to_inline() {
+        let inline = ThemeConfig {
+            accent: "#abcdef".to_owned(),
+            ..ThemeConfig::default()
+        };
+
+        let resolved = resolve_theme(&inline, Some(&ThemeFile::default()));
+        assert_eq!(resolved.accent, "#abcdef");
+    }
+
+    #[test]
+    fn resolve_theme_invalid_inline_falls_back_to_catppuccin() {
+        let inline = ThemeConfig {
+            background: "not-a-color".to_owned(),
+            accent: "#fff".to_owned(),
+            ..ThemeConfig::default()
+        };
+
+        let resolved = resolve_theme(&inline, None);
+        assert_eq!(resolved.background, BACKGROUND);
+        assert_eq!(resolved.accent, ACCENT);
+    }
+
+    #[test]
+    fn resolve_theme_name_precedence() {
+        let inline = ThemeConfig {
+            name: "inline-name".to_owned(),
+            ..ThemeConfig::default()
+        };
+
+        let file_named = ThemeFile {
+            name: Some("file-name".to_owned()),
+            ..ThemeFile::default()
+        };
+        assert_eq!(resolve_theme(&inline, Some(&file_named)).name, "file-name");
+
+        let file_empty = ThemeFile {
+            name: Some(String::new()),
+            ..ThemeFile::default()
+        };
+        assert_eq!(
+            resolve_theme(&inline, Some(&file_empty)).name,
+            "inline-name"
+        );
+        assert_eq!(resolve_theme(&inline, None).name, "inline-name");
+
+        let inline_empty = ThemeConfig {
+            name: String::new(),
+            ..ThemeConfig::default()
+        };
+        assert_eq!(resolve_theme(&inline_empty, None).name, "catppuccin-mocha");
+        assert_eq!(
+            resolve_theme(&inline_empty, Some(&file_empty)).name,
+            "catppuccin-mocha"
+        );
+    }
+
+    #[test]
+    fn theme_file_deserializes_partial_toml() {
+        let file: ThemeFile = toml::from_str("name = \"tokyo-night\"\nbackground = \"#010203\"")
+            .expect("partial theme TOML should deserialize");
+
+        assert_eq!(file.name.as_deref(), Some("tokyo-night"));
+        assert_eq!(file.background.as_deref(), Some("#010203"));
+        assert_eq!(file.foreground, None);
+        assert_eq!(file.accent, None);
+        assert_eq!(file.muted, None);
+        assert_eq!(file.warn, None);
+        assert_eq!(file.urgent, None);
+        assert_eq!(file.surface, None);
+        assert_eq!(file.success, None);
+    }
+
+    #[test]
+    fn validate_ai_unsupported_mode_errors() {
+        use crate::config::{AiConfig, AiMode, Config};
+        let config = Config {
+            ai: AiConfig {
+                enabled: true,
+                mode: AiMode::Unsupported,
+                ..AiConfig::default()
+            },
+            ..Config::default()
+        };
+        let errors = validate(&config);
+        assert!(
+            errors.iter().any(|e| e
+                .contains("ai.mode is reserved for a later milestone; only \"mock\" is supported")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_ai_interval_too_low_errors() {
+        use crate::config::{AiConfig, Config};
+        let config = Config {
+            ai: AiConfig {
+                enabled: true,
+                interval_ms: 1000,
+                ..AiConfig::default()
+            },
+            ..Config::default()
+        };
+        let errors = validate(&config);
+        assert!(errors.iter().any(|e| e.contains("interval")), "{errors:?}");
+    }
+
+    #[test]
+    fn validate_ai_warn_below_out_of_range_errors() {
+        use crate::config::{AiConfig, Config};
+        let config = Config {
+            ai: AiConfig {
+                enabled: true,
+                warn_below: 1.5,
+                ..AiConfig::default()
+            },
+            ..Config::default()
+        };
+        let errors = validate(&config);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("warn_below") || e.contains("ai")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_default_has_no_ai_errors() {
+        let errors = validate(&Config::default());
+
+        assert!(errors.iter().all(|e| !e.contains("ai.")), "{errors:?}");
+    }
+
+    #[test]
+    fn validate_rejects_unsupported_ai_mode() {
+        let config: Config = toml::from_str("[ai]\nenabled = true\nmode = \"real\"")
+            .expect("unknown ai mode should deserialize");
+
+        let errors = validate(&config);
+
+        assert!(
+            errors.iter().any(|e| e
+                .contains("ai.mode is reserved for a later milestone; only \"mock\" is supported")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_too_short_ai_interval() {
+        let config: Config = toml::from_str("[ai]\nenabled = true\ninterval_ms = 1000")
+            .expect("ai TOML should deserialize");
+
+        let errors = validate(&config);
+
+        assert!(
+            errors.iter().any(|e| e.contains("ai.interval_ms")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_out_of_range_ai_warn_below() {
+        let config: Config = toml::from_str("[ai]\nenabled = true\nwarn_below = 1.5")
+            .expect("ai TOML should deserialize");
+
+        let errors = validate(&config);
+
+        assert!(
+            errors.iter().any(|e| e.contains("ai.warn_below")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_warn_below_under_urgent_below() {
+        let config: Config =
+            toml::from_str("[ai]\nenabled = true\nwarn_below = 0.1\nurgent_below = 0.5")
+                .expect("ai TOML should deserialize");
+
+        let errors = validate(&config);
+
+        assert!(
+            errors.iter().any(|e| e.contains("ai.warn_below")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_skips_ai_checks_when_disabled() {
+        let config: Config = toml::from_str(
+            "[ai]\nmode = \"real\"\ninterval_ms = 1000\nwarn_below = 1.5\nurgent_below = 2.0",
+        )
+        .expect("ai TOML should deserialize");
+
+        let errors = validate(&config);
+
+        assert!(errors.iter().all(|e| !e.contains("ai.")), "{errors:?}");
     }
 }
