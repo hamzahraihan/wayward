@@ -17,3 +17,6 @@ wayward-ai = { path = "../wayward-ai" }
 wayward-core = { path = "../wayward-core" }
 wayward-modules = { path = "../wayward-modules" }
 wayward-platform = { path = "../wayward-platform" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "test-util"] }
