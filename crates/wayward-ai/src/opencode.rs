@@ -5,7 +5,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use rusqlite::{Connection, OpenFlags};
 
-use crate::{Meter, Usage, UsageProvider};
+use crate::{Usage, UsageProvider};
 
 pub struct OpenCodeProvider {
     db_path: PathBuf,
@@ -60,19 +60,14 @@ impl UsageProvider for OpenCodeProvider {
             )
             .context("summing OpenCode session tokens")?;
 
-        let reset_at = crate::window::next_reset(
-            self.reset_anchor_secs,
-            self.reset_after_secs,
-            SystemTime::now(),
-        );
         Ok(Usage {
             plan: None,
-            meters: vec![Meter {
-                label: "usage window".into(),
-                used: total as f64,
-                limit: self.limit,
-                reset_at: Some(reset_at),
-            }],
+            meters: vec![crate::window::window_meter(
+                self.reset_anchor_secs,
+                self.reset_after_secs,
+                self.limit,
+                total as f64,
+            )],
             spend: None,
         })
     }
