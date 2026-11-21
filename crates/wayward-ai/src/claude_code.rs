@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::{Meter, Usage, UsageProvider};
+use crate::{Usage, UsageProvider};
 
 fn collect_jsonl(dir: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()> {
     for entry in fs::read_dir(dir).with_context(|| format!("reading {}", dir.display()))? {
@@ -116,19 +116,14 @@ impl UsageProvider for ClaudeCodeProvider {
             }
         }
 
-        let reset_at = crate::window::next_reset(
-            self.reset_anchor_secs,
-            self.reset_after_secs,
-            SystemTime::now(),
-        );
         Ok(Usage {
             plan: None,
-            meters: vec![Meter {
-                label: "usage window".into(),
-                used: total as f64,
-                limit: self.limit,
-                reset_at: Some(reset_at),
-            }],
+            meters: vec![crate::window::window_meter(
+                self.reset_anchor_secs,
+                self.reset_after_secs,
+                self.limit,
+                total as f64,
+            )],
             spend: None,
         })
     }
