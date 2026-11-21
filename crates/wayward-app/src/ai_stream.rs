@@ -9,6 +9,7 @@ use iced::{stream, Subscription};
 use tokio::time::Instant as TokioInstant;
 use wayward_ai::level::aggregate_level;
 use wayward_ai::registry::{build_providers, ProviderSpec};
+use wayward_ai::Usage;
 use wayward_core::config::{AiConfig, AiMode, AiProviderConfig};
 
 use crate::view::Message;
@@ -82,6 +83,38 @@ struct ProviderState {
     spec: ProviderSpec,
     next_due: TokioInstant,
     failures: u32,
+}
+
+fn poll_result_message(
+    state: &mut ProviderState,
+    now: TokioInstant,
+    result: anyhow::Result<Usage>,
+    warn_below: f32,
+    urgent_below: f32,
+) -> Message {
+    let provider_id = state.spec.id.clone();
+    match result {
+        Ok(usage) => {
+            state.failures = 0;
+            state.next_due = now + state.spec.interval;
+            let level = aggregate_level(&usage, warn_below, urgent_below);
+            Message::AiFetched {
+                provider_id,
+                usage,
+                level,
+                fetched_at: Instant::now(),
+            }
+        }
+        Err(error) => {
+            state.failures = state.failures.saturating_add(1);
+            let delay = backoff_delay(state.spec.interval, state.failures, MAX_BACKOFF_MULTIPLIER);
+            state.next_due = now + delay;
+            Message::AiFetchFailed {
+                provider_id,
+                error: error.to_string(),
+            }
+        }
+    }
 }
 
 /// Poll every configured provider on its own interval and publish snapshots.
@@ -163,48 +196,17 @@ fn build_stream(key: &AiStreamKey) -> impl iced::futures::Stream<Item = Message>
                     continue;
                 }
 
-                let provider_id = state.spec.id.clone();
-                match state.spec.provider.fetch().await {
-                    Ok(usage) => {
-                        state.failures = 0;
-                        state.next_due = TokioInstant::now() + state.spec.interval;
-                        let level = aggregate_level(
-                            &usage,
-                            f32::from_bits(warn_below_bits),
-                            f32::from_bits(urgent_below_bits),
-                        );
-                        if output
-                            .send(Message::AiFetched {
-                                provider_id,
-                                usage,
-                                level,
-                                fetched_at: Instant::now(),
-                            })
-                            .await
-                            .is_err()
-                        {
-                            return;
-                        }
-                    }
-                    Err(error) => {
-                        state.failures = state.failures.saturating_add(1);
-                        let delay = backoff_delay(
-                            state.spec.interval,
-                            state.failures,
-                            MAX_BACKOFF_MULTIPLIER,
-                        );
-                        state.next_due = TokioInstant::now() + delay;
-                        if output
-                            .send(Message::AiFetchFailed {
-                                provider_id,
-                                error: error.to_string(),
-                            })
-                            .await
-                            .is_err()
-                        {
-                            return;
-                        }
-                    }
+                let now = TokioInstant::now();
+                let result = state.spec.provider.fetch().await;
+                let message = poll_result_message(
+                    state,
+                    now,
+                    result,
+                    f32::from_bits(warn_below_bits),
+                    f32::from_bits(urgent_below_bits),
+                );
+                if output.send(message).await.is_err() {
+                    return;
                 }
             }
         }
@@ -307,5 +309,44 @@ mod tests {
             assert_eq!(*gap, Duration::from_secs(interval_ms / 1_000 * multiplier));
         }
         drop(refresh_tx);
+    }
+
+    #[test]
+    fn success_resets_the_backoff_gap() {
+        let interval = Duration::from_secs(60);
+        let config = AiConfig {
+            mode: AiMode::Mock,
+            interval_ms: 60_000,
+            ..AiConfig::default()
+        };
+        let spec = build_providers(&config, std::path::Path::new("home"))
+            .into_iter()
+            .next()
+            .expect("mock provider");
+        let mut state = ProviderState {
+            spec,
+            next_due: TokioInstant::now(),
+            failures: 0,
+        };
+
+        let first = TokioInstant::now();
+        let message = poll_result_message(&mut state, first, Err(anyhow::anyhow!("x")), 0.2, 0.0);
+        assert!(matches!(message, Message::AiFetchFailed { .. }));
+        assert_eq!(state.next_due - first, interval * 2);
+
+        let second = state.next_due;
+        poll_result_message(&mut state, second, Err(anyhow::anyhow!("x")), 0.2, 0.0);
+        assert_eq!(state.next_due - second, interval * 4);
+
+        let third = state.next_due;
+        let usage = Usage {
+            plan: None,
+            meters: Vec::new(),
+            spend: None,
+        };
+        let message = poll_result_message(&mut state, third, Ok(usage), 0.2, 0.0);
+        assert!(matches!(message, Message::AiFetched { .. }));
+        assert_eq!(state.failures, 0);
+        assert_eq!(state.next_due - third, interval);
     }
 }
