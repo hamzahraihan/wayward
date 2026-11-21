@@ -15,10 +15,10 @@ use view::Message;
 use wayward_core::{themes_dir, AiMode, BarPosition, Config, Module, ModuleState};
 use wayward_platform::{PlatformOptions, WindowHandle};
 
-use crate::ai_stream::AiStreamKey;
+use crate::ai_stream::{AiProviderKey, AiStreamKey};
 use crate::config_io::{ReloadContext, ReloadOutcome};
 use crate::hot_reload::{ReloadEvent, WatchPaths};
-use crate::popup_view::AiSnapshot;
+use crate::popup_view::{apply_failed, apply_fetched, retain_provider_snapshots, AiSnapshot};
 
 struct ModuleCell {
     id: &'static str,
@@ -26,9 +26,9 @@ struct ModuleCell {
     state: ModuleState,
 }
 
-/// AI controller state — only present when the config debug mode is enabled.
+/// AI controller state — only present when the AI module is enabled.
 struct AiController {
-    snapshot: Option<AiSnapshot>,
+    snapshots: Vec<AiSnapshot>,
     refresh_tx: Option<iced::futures::channel::mpsc::UnboundedSender<()>>,
     show_left: bool,
 }
@@ -63,7 +63,7 @@ fn geometry_for(config: &Config, width: f32, height: f32) -> (Size, Point) {
 }
 
 fn ai_enabled(config: &Config) -> bool {
-    config.ai.enabled && config.ai.mode == AiMode::Mock
+    config.ai.enabled && config.ai.mode != AiMode::Unsupported
 }
 
 fn build_modules(config: &Config) -> Vec<ModuleCell> {
@@ -122,9 +122,9 @@ fn boot() -> (AppState, Task<Message>) {
     reload.seed_from_disk();
 
     let ai = if ai_enabled(&loaded.config) {
-        tracing::info!("AI debug mode enabled (mock data)");
+        tracing::info!(mode = ?loaded.config.ai.mode, "AI module enabled");
         Some(AiController {
-            snapshot: None,
+            snapshots: Vec::new(),
             refresh_tx: None,
             show_left: true,
         })
@@ -252,18 +252,35 @@ fn apply_reload(state: &mut AppState, event: ReloadEvent) -> Task<Message> {
             if old_ai != new_ai {
                 let close_task = close_popup(state);
                 state.ai = if new_ai {
-                    tracing::info!("AI debug mode enabled via hot reload");
+                    tracing::info!("AI module enabled via hot reload");
                     Some(AiController {
-                        snapshot: None,
+                        snapshots: Vec::new(),
                         refresh_tx: None,
                         show_left: true,
                     })
                 } else {
-                    tracing::info!("AI debug mode disabled via hot reload");
+                    tracing::info!("AI module disabled via hot reload");
                     None
                 };
                 if !new_ai {
                     return close_task;
+                }
+            } else if new_ai {
+                if let Some(controller) = state.ai.as_mut() {
+                    let ids = if matches!(state.config.ai.mode, wayward_core::config::AiMode::Mock)
+                    {
+                        vec!["mock".to_owned()]
+                    } else {
+                        state
+                            .config
+                            .ai
+                            .providers
+                            .iter()
+                            .filter(|provider| provider.enabled)
+                            .map(|provider| provider.id.clone())
+                            .collect()
+                    };
+                    retain_provider_snapshots(&mut controller.snapshots, &ids);
                 }
             }
 
@@ -352,20 +369,26 @@ fn update(state: &mut AppState, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::AiFetched {
+            provider_id,
             usage,
             level,
             fetched_at,
-            error,
         } => {
             if let Some(controller) = state.ai.as_mut() {
-                if let Some(error) = error {
-                    tracing::warn!("AI provider error: {error}");
-                }
-                controller.snapshot = Some(AiSnapshot {
+                apply_fetched(
+                    &mut controller.snapshots,
+                    provider_id,
                     usage,
                     level,
                     fetched_at,
-                });
+                );
+            }
+            Task::none()
+        }
+        Message::AiFetchFailed { provider_id, error } => {
+            if let Some(controller) = state.ai.as_mut() {
+                tracing::warn!(provider = %provider_id, "AI provider refresh failed");
+                apply_failed(&mut controller.snapshots, provider_id, error);
             }
             Task::none()
         }
@@ -472,8 +495,24 @@ fn subscription(state: &AppState) -> Subscription<Message> {
     );
 
     if ai_enabled(&state.config) {
+        let ai = &state.config.ai;
         subscriptions.push(ai_stream::subscription(AiStreamKey {
-            interval_ms: state.config.ai.interval_ms,
+            mode: ai.mode,
+            enabled: ai.enabled,
+            interval_ms: ai.interval_ms,
+            experimental: ai.experimental,
+            providers: ai
+                .providers
+                .iter()
+                .map(|provider| AiProviderKey {
+                    id: provider.id.clone(),
+                    enabled: provider.enabled,
+                    interval_ms: provider.interval_ms,
+                    root: provider.root.clone(),
+                    limit_bits: provider.limit.to_bits(),
+                    reset_after_secs: provider.reset_after_secs,
+                })
+                .collect(),
         }));
     }
 

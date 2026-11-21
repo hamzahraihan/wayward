@@ -76,6 +76,12 @@ fn known_keys() -> BTreeSet<&'static str> {
         "mode",
         "warn_below",
         "urgent_below",
+        "experimental",
+        "providers",
+        "id",
+        "root",
+        "limit",
+        "reset_after_secs",
     ])
 }
 
@@ -98,6 +104,18 @@ fn unknown_key_warnings(value: &toml::Value) -> Vec<String> {
     ] {
         if let Some(table) = root.get(section).and_then(toml::Value::as_table) {
             check(table, &format!("{section}."));
+        }
+    }
+    if let Some(providers) = root
+        .get("ai")
+        .and_then(toml::Value::as_table)
+        .and_then(|ai| ai.get("providers"))
+        .and_then(toml::Value::as_array)
+    {
+        for (index, provider) in providers.iter().enumerate() {
+            if let Some(table) = provider.as_table() {
+                check(table, &format!("ai.providers[{index}]."));
+            }
         }
     }
     warnings
@@ -594,5 +612,78 @@ mod tests {
 
         fs::write(&path, enabled).expect("rewrite identical bytes");
         assert_eq!(context.reload(), ReloadOutcome::Unchanged);
+    }
+
+    #[test]
+    fn new_ai_keys_are_not_unknown_warnings() {
+        let temp = TempDir::new("ai-new-keys");
+        fs::write(
+            temp.0.join("wayward.toml"),
+            "[ai]\nmode = \"mock\"\nexperimental = true\n\
+             [[ai.providers]]\nid = \"claude-code\"\nenabled = false\ninterval_ms = 300000\n\
+             root = \"/tmp/claude\"\nlimit = 1000000.0\nreset_after_secs = 18000\n",
+        )
+        .expect("write config");
+        let mut context = context_at(&temp.0);
+
+        match context.reload() {
+            ReloadOutcome::Loaded { config, warnings } => {
+                assert!(config.ai.experimental);
+                assert_eq!(config.ai.providers.len(), 1);
+                assert_eq!(config.ai.providers[0].id, "claude-code");
+                for key in [
+                    "experimental",
+                    "providers",
+                    "id",
+                    "root",
+                    "limit",
+                    "reset_after_secs",
+                ] {
+                    assert!(
+                        !warnings.iter().any(|warning| warning.contains(key)),
+                        "unexpected {key} warning: {warnings:?}"
+                    );
+                }
+            }
+            other => panic!("expected Loaded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_provider_key_is_warning() {
+        let value: toml::Value =
+            toml::from_str("[[ai.providers]]\nid = \"claude-code\"\nbogus = 1\n")
+                .expect("parse TOML value");
+        let warnings = unknown_key_warnings(&value);
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("ai.providers[0].bogus")),
+            "expected provider warning, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn malformed_provider_config_keeps_last_good() {
+        let temp = TempDir::new("bad-provider");
+        let path = temp.0.join("wayward.toml");
+        let baseline = b"[ai]\nenabled = false\n";
+        fs::write(&path, baseline).expect("write baseline config");
+        let mut context = context_at(&temp.0);
+        context.seed_from_disk();
+
+        fs::write(
+            &path,
+            "[ai]\nenabled = false\n[[ai.providers]]\nid = \"claude-code\"\ninterval_ms = \"oops\"\n",
+        )
+        .expect("write malformed provider config");
+        assert!(matches!(context.reload(), ReloadOutcome::Invalid { .. }));
+
+        fs::write(&path, baseline).expect("restore baseline config");
+        assert_eq!(
+            context.reload(),
+            ReloadOutcome::Unchanged,
+            "restoring the last-good bytes needs no re-apply"
+        );
     }
 }

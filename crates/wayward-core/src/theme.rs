@@ -170,9 +170,7 @@ pub fn validate(config: &Config) -> Vec<String> {
     if config.ai.enabled {
         let ai = &config.ai;
         if ai.mode == AiMode::Unsupported {
-            errors.push(
-                "ai.mode is reserved for a later milestone; only \"mock\" is supported".to_owned(),
-            );
+            errors.push("ai.mode is not supported; use \"mock\" or \"real\"".to_owned());
         }
         if ai.interval_ms < 30_000 {
             errors.push(format!(
@@ -197,6 +195,30 @@ pub fn validate(config: &Config) -> Vec<String> {
                 "ai.warn_below must be >= ai.urgent_below, got {} < {}",
                 ai.warn_below, ai.urgent_below
             ));
+        }
+        for (index, provider) in ai.providers.iter().enumerate() {
+            let prefix = format!("ai.providers[{index}]");
+            if !matches!(provider.id.as_str(), "claude-code" | "opencode" | "mock") {
+                errors.push(format!(
+                    "{prefix}.id is not a known provider: {:?}",
+                    provider.id
+                ));
+            }
+            if provider.interval_ms < 30_000 {
+                errors.push(format!(
+                    "{prefix}.interval_ms must be at least 30000, got {}",
+                    provider.interval_ms
+                ));
+            }
+            if provider.limit <= 0.0 {
+                errors.push(format!(
+                    "{prefix}.limit must be > 0.0, got {}",
+                    provider.limit
+                ));
+            }
+            if provider.reset_after_secs == 0 {
+                errors.push(format!("{prefix}.reset_after_secs must be > 0, got 0"));
+            }
         }
     }
 
@@ -233,7 +255,7 @@ pub fn effective_theme(config: &Config) -> ThemeConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
+    use crate::config::{AiConfig, AiProviderConfig, Config};
 
     #[test]
     fn catppuccin_mocha_has_exact_palette() {
@@ -515,8 +537,9 @@ mod tests {
         };
         let errors = validate(&config);
         assert!(
-            errors.iter().any(|e| e
-                .contains("ai.mode is reserved for a later milestone; only \"mock\" is supported")),
+            errors
+                .iter()
+                .any(|e| e.contains("ai.mode is not supported; use \"mock\" or \"real\"")),
             "{errors:?}"
         );
     }
@@ -565,14 +588,15 @@ mod tests {
 
     #[test]
     fn validate_rejects_unsupported_ai_mode() {
-        let config: Config = toml::from_str("[ai]\nenabled = true\nmode = \"real\"")
+        let config: Config = toml::from_str("[ai]\nenabled = true\nmode = \"bogus\"")
             .expect("unknown ai mode should deserialize");
 
         let errors = validate(&config);
 
         assert!(
-            errors.iter().any(|e| e
-                .contains("ai.mode is reserved for a later milestone; only \"mock\" is supported")),
+            errors
+                .iter()
+                .any(|e| e.contains("ai.mode is not supported; use \"mock\" or \"real\"")),
             "{errors:?}"
         );
     }
@@ -627,5 +651,107 @@ mod tests {
         let errors = validate(&config);
 
         assert!(errors.iter().all(|e| !e.contains("ai.")), "{errors:?}");
+    }
+
+    fn enabled_config_with_provider() -> Config {
+        Config {
+            ai: AiConfig {
+                enabled: true,
+                providers: vec![AiProviderConfig {
+                    id: "claude-code".to_owned(),
+                    enabled: true,
+                    limit: 1_000_000.0,
+                    ..AiProviderConfig::default()
+                }],
+                ..AiConfig::default()
+            },
+            ..Config::default()
+        }
+    }
+
+    #[test]
+    fn validate_accepts_real_mode_when_enabled() {
+        let config = Config {
+            ai: AiConfig {
+                enabled: true,
+                mode: AiMode::Real,
+                ..AiConfig::default()
+            },
+            ..Config::default()
+        };
+
+        assert!(validate(&config).is_empty(), "{:?}", validate(&config));
+    }
+
+    #[test]
+    fn validate_accepts_experimental_flag() {
+        let config = Config {
+            ai: AiConfig {
+                enabled: true,
+                experimental: true,
+                ..AiConfig::default()
+            },
+            ..Config::default()
+        };
+
+        assert!(validate(&config).is_empty(), "{:?}", validate(&config));
+    }
+
+    #[test]
+    fn validate_accepts_a_valid_provider() {
+        let errors = validate(&enabled_config_with_provider());
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn validate_rejects_unknown_provider_id() {
+        let mut config = enabled_config_with_provider();
+        config.ai.providers[0].id = "mystery".to_owned();
+
+        let errors = validate(&config);
+        assert!(
+            errors.iter().any(|e| e.contains("ai.providers[0].id")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_non_positive_provider_limit() {
+        let mut config = enabled_config_with_provider();
+        config.ai.providers[0].limit = 0.0;
+
+        let errors = validate(&config);
+        assert!(
+            errors.iter().any(|e| e.contains("ai.providers[0].limit")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_short_provider_interval() {
+        let mut config = enabled_config_with_provider();
+        config.ai.providers[0].interval_ms = 1000;
+
+        let errors = validate(&config);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("ai.providers[0].interval_ms")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_zero_provider_reset_window() {
+        let mut config = enabled_config_with_provider();
+        config.ai.providers[0].reset_after_secs = 0;
+
+        let errors = validate(&config);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("ai.providers[0].reset_after_secs")),
+            "{errors:?}"
+        );
     }
 }

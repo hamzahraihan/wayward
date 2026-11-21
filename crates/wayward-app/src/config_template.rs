@@ -35,6 +35,19 @@ mod tests {
     }
 
     #[test]
+    fn bundled_template_documents_providers_without_enabling_them() {
+        let config: wayward_core::Config =
+            toml::from_str(DEFAULT_CONFIG).expect("bundled template should deserialize");
+
+        assert!(!config.ai.experimental);
+        assert!(config.ai.providers.is_empty());
+        assert!(DEFAULT_CONFIG.contains("# experimental = false"));
+        assert!(DEFAULT_CONFIG.contains("# [[ai.providers]]"));
+        assert!(DEFAULT_CONFIG.contains("# id = \"claude-code\""));
+        assert!(DEFAULT_CONFIG.contains("# id = \"opencode\""));
+    }
+
+    #[test]
     fn bundled_theme_deserializes_with_exact_palette() {
         use super::{DEFAULT_THEME, DEFAULT_THEME_NAME};
 

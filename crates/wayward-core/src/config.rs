@@ -149,8 +149,33 @@ impl Default for BatteryConfig {
 pub enum AiMode {
     #[default]
     Mock,
+    Real,
     #[serde(other)]
     Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct AiProviderConfig {
+    pub id: String,
+    pub enabled: bool,
+    pub interval_ms: u64,
+    pub root: Option<std::path::PathBuf>,
+    pub limit: f64,
+    pub reset_after_secs: u64,
+}
+
+impl Default for AiProviderConfig {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            enabled: false,
+            interval_ms: 300_000,
+            root: None,
+            limit: 0.0,
+            reset_after_secs: 18_000,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -161,6 +186,11 @@ pub struct AiConfig {
     pub interval_ms: u64,
     pub warn_below: f32,
     pub urgent_below: f32,
+    /// Reserved for undocumented endpoints, which can break without notice.
+    /// This flag must never be enabled by default; it only gates code paths
+    /// that do not exist yet.
+    pub experimental: bool,
+    pub providers: Vec<AiProviderConfig>,
 }
 
 impl Default for AiConfig {
@@ -171,6 +201,8 @@ impl Default for AiConfig {
             interval_ms: 300_000,
             warn_below: 0.20,
             urgent_below: 0.0,
+            experimental: false,
+            providers: Vec::new(),
         }
     }
 }
@@ -293,9 +325,61 @@ mod tests {
 
     #[test]
     fn unknown_ai_mode_deserializes_to_unsupported() {
-        let parsed: Config = toml::from_str("[ai]\nenabled = true\nmode = \"real\"")
+        let parsed: Config = toml::from_str("[ai]\nenabled = true\nmode = \"bogus\"")
             .expect("unknown ai mode should deserialize");
 
         assert_eq!(parsed.ai.mode, AiMode::Unsupported);
+    }
+
+    #[test]
+    fn real_ai_mode_deserializes_to_real() {
+        let parsed: Config = toml::from_str("[ai]\nenabled = true\nmode = \"real\"")
+            .expect("real ai mode should deserialize");
+
+        assert_eq!(parsed.ai.mode, AiMode::Real);
+    }
+
+    #[test]
+    fn empty_toml_has_new_ai_defaults() {
+        let parsed: Config = toml::from_str("").expect("empty TOML should deserialize");
+
+        assert_eq!(parsed, Config::default());
+        assert!(!parsed.ai.experimental);
+        assert!(parsed.ai.providers.is_empty());
+    }
+
+    #[test]
+    fn explicit_ai_providers_parse() {
+        let parsed: Config = toml::from_str(
+            "[ai]\nenabled = true\nmode = \"real\"\nexperimental = true\n\
+             [[ai.providers]]\nid = \"claude-code\"\nenabled = true\ninterval_ms = 60000\n\
+             root = \"/tmp/claude\"\nlimit = 1000000.0\nreset_after_secs = 3600\n\
+             [[ai.providers]]\nid = \"opencode\"\nenabled = false\n",
+        )
+        .expect("explicit AI config should deserialize");
+
+        assert!(parsed.ai.enabled);
+        assert_eq!(parsed.ai.mode, AiMode::Real);
+        assert!(parsed.ai.experimental);
+        assert_eq!(parsed.ai.providers.len(), 2);
+
+        let first = &parsed.ai.providers[0];
+        assert_eq!(first.id, "claude-code");
+        assert!(first.enabled);
+        assert_eq!(first.interval_ms, 60_000);
+        assert_eq!(
+            first.root.as_deref(),
+            Some(std::path::Path::new("/tmp/claude"))
+        );
+        assert_eq!(first.limit, 1_000_000.0);
+        assert_eq!(first.reset_after_secs, 3600);
+
+        let second = &parsed.ai.providers[1];
+        assert_eq!(second.id, "opencode");
+        assert!(!second.enabled);
+        assert_eq!(second.interval_ms, 300_000);
+        assert_eq!(second.root, None);
+        assert_eq!(second.limit, 0.0);
+        assert_eq!(second.reset_after_secs, 18_000);
     }
 }

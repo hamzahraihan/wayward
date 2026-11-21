@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use iced::{Color, Element};
+use wayward_ai::level::worst_level;
 use wayward_core::{Config, Level, ModuleState};
 
 use crate::style::{level_color, Colors};
@@ -20,10 +21,14 @@ pub enum Message {
         refresh_tx: iced::futures::channel::mpsc::UnboundedSender<()>,
     },
     AiFetched {
+        provider_id: String,
         usage: wayward_ai::Usage,
         level: Level,
         fetched_at: Instant,
-        error: Option<String>,
+    },
+    AiFetchFailed {
+        provider_id: String,
+        error: String,
     },
     AiTogglePopup,
     AiRefreshPopup,
@@ -105,7 +110,8 @@ pub fn window_view<'a>(
     if Some(window_id) == state.popup_id {
         let ai = state.ai.as_ref();
         return popup_view::popup(
-            ai.and_then(|controller| controller.snapshot.as_ref()),
+            ai.map(|controller| controller.snapshots.as_slice())
+                .unwrap_or_default(),
             &state.colors,
             ai.is_some_and(|controller| controller.show_left),
             Instant::now(),
@@ -118,10 +124,9 @@ pub fn window_view<'a>(
             &state.colors,
             &state.config,
             state.config_error.as_deref(),
-            state
-                .ai
-                .as_ref()
-                .and_then(|controller| controller.snapshot.as_ref().map(|snapshot| snapshot.level)),
+            state.ai.as_ref().map(|controller| {
+                worst_level(controller.snapshots.iter().map(|snapshot| snapshot.level))
+            }),
         );
     }
 

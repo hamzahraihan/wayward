@@ -62,13 +62,33 @@ interval_ms = 3000  # stat poll interval, 2000..=5000
 [modules.battery]
 interval_ms = 5000  # stat poll interval, 2000..=5000
 
-# AI usage module (developer/debug mode).
-# When enabled = true with mode = "mock", wayward shows a fake AI icon and popup
-# using deterministic local data — no network calls, no API keys, no credentials.
-# Other modes are reserved for a later milestone and will fail validation.
+# AI usage module.
+# mode = "mock" uses deterministic local demo data; mode = "real" reads the
+# enabled providers below. Neither mode makes network requests or needs keys.
+# Any other mode value fails validation.
 [ai]
-enabled = false         # set true to test the AI icon + popup without real data
-mode = "mock"           # only "mock" is supported in this milestone
+enabled = false         # set true to show the AI icon and popup
+mode = "mock"           # "mock" or "real"
 interval_ms = 300000    # provider poll interval (5 minutes)
 warn_below = 0.20       # warn when <=20% of a quota remains
 urgent_below = 0.0      # urgent at 0 left / limit hit
+
+# Undocumented endpoints can break without notice and are never enabled by
+# default. This flag only gates providers that do not exist yet.
+# experimental = false
+
+# One block per provider. `root` can override the default local data location.
+# [[ai.providers]]
+# id = "claude-code"
+# enabled = false
+# interval_ms = 300000
+# root = "/path/to/claude"  # optional: override default local data location
+# limit = 1000000           # token quota, must be > 0
+# reset_after_secs = 18000
+
+# [[ai.providers]]
+# id = "opencode"
+# enabled = false
+# interval_ms = 300000
+# limit = 1000000
+# reset_after_secs = 18000
