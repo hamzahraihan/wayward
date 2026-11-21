@@ -8,6 +8,10 @@ pub struct Colors {
     pub foreground: Color,
     pub warn: Color,
     pub urgent: Color,
+    pub accent: Color,
+    pub muted: Color,
+    pub surface: Color,
+    pub success: Color,
 }
 
 pub fn to_color(rgb: (f32, f32, f32)) -> Color {
@@ -34,6 +38,10 @@ pub fn theme_colors(config: &Config) -> Colors {
         foreground: color(&theme.foreground, &fallback.foreground),
         warn: color(&theme.warn, &fallback.warn),
         urgent: color(&theme.urgent, &fallback.urgent),
+        accent: color(&theme.accent, &fallback.accent),
+        muted: color(&theme.muted, &fallback.muted),
+        surface: color(&theme.surface, &fallback.surface),
+        success: color(&theme.success, &fallback.success),
     }
 }
 
@@ -58,6 +66,18 @@ mod tests {
             wayward_core::parse_hex_rgb(wayward_core::BACKGROUND).expect("valid constant");
         let expected_foreground =
             wayward_core::parse_hex_rgb(wayward_core::FOREGROUND).expect("valid constant");
+        let expected_warn =
+            wayward_core::parse_hex_rgb(wayward_core::WARN).expect("valid constant");
+        let expected_urgent =
+            wayward_core::parse_hex_rgb(wayward_core::URGENT).expect("valid constant");
+        let expected_accent =
+            wayward_core::parse_hex_rgb(wayward_core::ACCENT).expect("valid constant");
+        let expected_muted =
+            wayward_core::parse_hex_rgb(wayward_core::MUTED).expect("valid constant");
+        let expected_surface =
+            wayward_core::parse_hex_rgb(wayward_core::SURFACE).expect("valid constant");
+        let expected_success =
+            wayward_core::parse_hex_rgb(wayward_core::SUCCESS).expect("valid constant");
 
         assert_eq!(
             (
@@ -75,6 +95,45 @@ mod tests {
             ),
             expected_foreground
         );
+        assert_eq!((colors.warn.r, colors.warn.g, colors.warn.b), expected_warn);
+        assert_eq!(
+            (colors.urgent.r, colors.urgent.g, colors.urgent.b),
+            expected_urgent
+        );
+        assert_eq!(
+            (colors.accent.r, colors.accent.g, colors.accent.b),
+            expected_accent
+        );
+        assert_eq!(
+            (colors.muted.r, colors.muted.g, colors.muted.b),
+            expected_muted
+        );
+        assert_eq!(
+            (colors.surface.r, colors.surface.g, colors.surface.b),
+            expected_surface
+        );
+        assert_eq!(
+            (colors.success.r, colors.success.g, colors.success.b),
+            expected_success
+        );
+    }
+
+    #[test]
+    fn theme_colors_falls_back_for_invalid_theme() {
+        let mut config = Config::default();
+        config.theme.background.clear();
+        config.theme.foreground.clear();
+        config.theme.warn.clear();
+        config.theme.urgent.clear();
+        config.theme.accent.clear();
+        config.theme.muted.clear();
+        config.theme.surface.clear();
+        config.theme.success.clear();
+
+        let colors = theme_colors(&config);
+        let defaults = theme_colors(&Config::default());
+
+        assert_eq!(colors, defaults);
     }
 
     #[test]
