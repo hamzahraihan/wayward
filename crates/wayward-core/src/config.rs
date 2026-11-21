@@ -144,6 +144,37 @@ impl Default for BatteryConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AiMode {
+    #[default]
+    Mock,
+    #[serde(other)]
+    Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct AiConfig {
+    pub enabled: bool,
+    pub mode: AiMode,
+    pub interval_ms: u64,
+    pub warn_below: f32,
+    pub urgent_below: f32,
+}
+
+impl Default for AiConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: AiMode::Mock,
+            interval_ms: 300_000,
+            warn_below: 0.20,
+            urgent_below: 0.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 #[serde(default)]
 pub struct ModulesConfig {
@@ -161,6 +192,7 @@ pub struct Config {
     pub theme: ThemeConfig,
     pub layout: LayoutConfig,
     pub modules: ModulesConfig,
+    pub ai: AiConfig,
 }
 
 #[cfg(test)]
@@ -218,5 +250,52 @@ mod tests {
 
         assert_eq!(parsed.bar.height, 30);
         assert_eq!(parsed.bar.position, BarPosition::Top);
+    }
+
+    #[test]
+    fn empty_toml_ai_defaults() {
+        let parsed: Config = toml::from_str("").expect("empty TOML should deserialize");
+        assert!(!parsed.ai.enabled);
+        assert_eq!(parsed.ai.mode, AiMode::Mock);
+    }
+
+    #[test]
+    fn partial_ai_toml_preserves_defaults() {
+        let parsed: Config = toml::from_str("[ai]\nenabled = true\ninterval_ms = 60000")
+            .expect("partial ai TOML should deserialize");
+        assert!(parsed.ai.enabled);
+        assert_eq!(parsed.ai.interval_ms, 60000);
+        assert_eq!(parsed.ai.warn_below, 0.20);
+    }
+
+    #[test]
+    fn empty_toml_yields_disabled_ai_defaults() {
+        let parsed: Config = toml::from_str("").expect("empty TOML should deserialize");
+
+        assert!(!parsed.ai.enabled);
+        assert_eq!(parsed.ai.mode, AiMode::Mock);
+        assert_eq!(parsed.ai.interval_ms, 300_000);
+        assert_eq!(parsed.ai.warn_below, 0.20);
+        assert_eq!(parsed.ai.urgent_below, 0.0);
+    }
+
+    #[test]
+    fn ai_toml_overrides_keep_other_ai_defaults() {
+        let parsed: Config = toml::from_str("[ai]\nenabled = true\ninterval_ms = 60000")
+            .expect("ai TOML should deserialize");
+
+        assert!(parsed.ai.enabled);
+        assert_eq!(parsed.ai.interval_ms, 60_000);
+        assert_eq!(parsed.ai.mode, AiMode::Mock);
+        assert_eq!(parsed.ai.warn_below, 0.20);
+        assert_eq!(parsed.ai.urgent_below, 0.0);
+    }
+
+    #[test]
+    fn unknown_ai_mode_deserializes_to_unsupported() {
+        let parsed: Config = toml::from_str("[ai]\nenabled = true\nmode = \"real\"")
+            .expect("unknown ai mode should deserialize");
+
+        assert_eq!(parsed.ai.mode, AiMode::Unsupported);
     }
 }
