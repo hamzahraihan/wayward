@@ -3,3 +3,8 @@ name = "wayward-ai"
 edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
+
+[dependencies]
+wayward-core = { path = "../wayward-core" }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
