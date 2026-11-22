@@ -10,6 +10,7 @@ use crate::{input, popup_view};
 #[derive(Debug, Clone)]
 pub enum Message {
     Tick(&'static str),
+    ForegroundChanged(String),
     Ready {
         id: iced::window::Id,
         handle: wayward_platform::WindowHandle,

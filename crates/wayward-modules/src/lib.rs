@@ -1,7 +1,10 @@
+pub mod active_window;
 pub mod battery;
 pub mod clock;
 pub mod cpu;
+pub mod network;
 pub mod ram;
+pub mod volume;
 
 use std::time::Duration;
 
@@ -33,6 +36,13 @@ pub fn create(id: &str, config: &Config) -> Option<Box<dyn Module>> {
         "battery" => Some(Box::new(battery::BatteryModule::new(
             config.modules.battery.interval_ms,
         ))),
+        "volume" => Some(Box::new(volume::VolumeModule::new(
+            config.modules.volume.interval_ms,
+        ))),
+        "network" => Some(Box::new(network::NetworkModule::new(
+            config.modules.network.interval_ms,
+        ))),
+        "active_window" => Some(Box::new(active_window::ActiveWindowModule::new())),
         _ => None,
     }
 }
@@ -96,6 +106,28 @@ mod tests {
         let config = Config::default();
         let module = create("battery", &config).expect("battery module should be created");
         assert_eq!(module.id(), "battery");
+    }
+
+    #[test]
+    fn create_volume_module() {
+        let config = Config::default();
+        let module = create("volume", &config).expect("volume module should be created");
+        assert_eq!(module.id(), "volume");
+    }
+
+    #[test]
+    fn create_network_module() {
+        let config = Config::default();
+        let module = create("network", &config).expect("network module should be created");
+        assert_eq!(module.id(), "network");
+    }
+
+    #[test]
+    fn create_active_window_module() {
+        let config = Config::default();
+        let module =
+            create("active_window", &config).expect("active_window module should be created");
+        assert_eq!(module.id(), "active_window");
     }
 
     #[test]

@@ -161,6 +161,8 @@ pub fn validate(config: &Config) -> Vec<String> {
         ("cpu.interval_ms", config.modules.cpu.interval_ms),
         ("ram.interval_ms", config.modules.ram.interval_ms),
         ("battery.interval_ms", config.modules.battery.interval_ms),
+        ("volume.interval_ms", config.modules.volume.interval_ms),
+        ("network.interval_ms", config.modules.network.interval_ms),
     ] {
         if !(2000..=5000).contains(&interval_ms) {
             errors.push(format!("{name} must be in 2000..=5000, got {interval_ms}"));

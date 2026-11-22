@@ -1,11 +1,17 @@
 pub mod appbar;
+pub mod audio;
 pub mod console;
+pub mod foreground;
+pub mod network;
 pub mod power;
 pub mod screen;
 pub mod shell;
 pub mod subclass;
 
 pub use appbar::*;
+pub use audio::{audio_state, AudioState};
+pub use foreground::{foreground_title, truncate_title, ForegroundEvent, ForegroundGuard};
+pub use network::{network_state, NetworkState};
 
 pub use console::{claim_ctrl_event, ConsoleGuard};
 pub use power::*;

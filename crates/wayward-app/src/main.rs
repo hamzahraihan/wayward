@@ -2,6 +2,7 @@ mod ai_stream;
 mod cli;
 mod config_io;
 mod config_template;
+mod foreground_stream;
 mod hot_reload;
 mod input;
 mod popup_view;
@@ -324,6 +325,17 @@ fn update(state: &mut AppState, message: Message) -> Task<Message> {
             }
             Task::none()
         }
+        Message::ForegroundChanged(title) => {
+            if let Some(cell) = state
+                .modules
+                .iter_mut()
+                .find(|cell| cell.id == "active_window")
+            {
+                cell.module.push(&title);
+                cell.state = cell.module.update();
+            }
+            Task::none()
+        }
         Message::Ready { id, handle } => {
             tracing::info!("Ready message received");
             state.bar_id = Some(id);
@@ -479,6 +491,12 @@ fn subscription(state: &AppState) -> Subscription<Message> {
     subscriptions.push(iced::window::close_requests().map(Message::WindowCloseRequested));
     subscriptions.push(iced::window::close_events().map(Message::PopupClosed));
     subscriptions.push(iced::event::listen_with(input::popup_key).map(Message::AiKeyboard));
+
+    if state.modules.iter().any(|cell| cell.id == "active_window") {
+        subscriptions.push(foreground_stream::subscription(
+            foreground_stream::ForegroundKey,
+        ));
+    }
 
     if let Some(popup_id) = state.popup_id {
         subscriptions.push(iced::window::events().with(popup_id).filter_map(

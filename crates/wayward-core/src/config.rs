@@ -144,6 +144,38 @@ impl Default for BatteryConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct VolumeConfig {
+    pub interval_ms: u64,
+}
+
+impl Default for VolumeConfig {
+    fn default() -> Self {
+        Self { interval_ms: 2000 }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct NetworkConfig {
+    pub interval_ms: u64,
+}
+
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        Self { interval_ms: 5000 }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[serde(default)]
+pub struct ActiveWindowConfig {
+    /// Reserved: the active-window module is event-driven and has no interval.
+    /// Present so the template can document it without an unknown-key warning.
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AiMode {
@@ -216,6 +248,9 @@ pub struct ModulesConfig {
     pub cpu: CpuConfig,
     pub ram: RamConfig,
     pub battery: BatteryConfig,
+    pub volume: VolumeConfig,
+    pub network: NetworkConfig,
+    pub active_window: ActiveWindowConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]

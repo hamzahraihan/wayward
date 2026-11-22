@@ -42,6 +42,10 @@ pub trait Module: Send + 'static {
     fn interval(&self) -> Option<Duration>;
     fn update(&mut self) -> ModuleState;
     fn on_click(&mut self, _button: MouseButton) {}
+
+    /// Push an event-driven update into the module, if it supports one.
+    /// The active-window module uses this to receive foreground hook events.
+    fn push(&mut self, _payload: &str) {}
 }
 
 #[cfg(test)]
