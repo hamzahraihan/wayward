@@ -249,6 +249,7 @@ Rules for providers:
 - Small, reviewable commits with clear messages.
 - Before finishing any task run: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, and fix everything.
 - Add unit tests for pure logic (config parsing, usage math, time formatting). Win32 code gets a short manual test note in the PR description.
+- Verify UI changes with `./scripts/smoke.ps1` (launches on a throwaway config, asserts bar geometry and a clean exit; add `-RequirePopup` for the AI popup). `./scripts/guardrails.ps1` enforces the mechanical bans above.
 - When something is ambiguous or requires a decision (new dependency, design deviation, provider terms), **ask instead of guessing**.
 - Do not refactor unrelated code, rename things for style, or add features not in this document.
 - Keep the release binary small: `lto = "thin"` or `"fat"`, `codegen-units = 1`, `strip = true`, `panic = "abort"` if compatible with the AppBar cleanup guard (verify before enabling).
