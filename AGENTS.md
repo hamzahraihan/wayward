@@ -143,6 +143,7 @@ Rules:
 - If the file is invalid, keep the **last good config**, log the error, and show a small error state (for example, the settings window shows the parse error with line number). The bar must never crash or go blank because of a bad edit.
 - Unknown keys are warnings, not errors. Missing keys fall back to defaults.
 - Validate values (hex colors, ranges for height and font size) and report clear messages.
+- **Adding a config key touches four places:** the struct field and its `Default` in `crates/wayward-core/src/config.rs`, the rule in `validate()` in `crates/wayward-core/src/theme.rs`, the `known_keys()` set in `crates/wayward-app/src/config_io.rs`, and the commented template in `config/wayward.toml`. Miss any one and the key either fails validation, logs a false "unknown key" warning, or never reaches a user's file.
 
 **Settings window**
 
