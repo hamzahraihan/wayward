@@ -135,3 +135,12 @@ urgent_below = 0.0      # urgent at 0 left / limit hit
 # id = "opencode-official" # opencode.ai/zen/go/v1/usage (requires Go plan)
 # enabled = false
 # interval_ms = 300000
+
+# Experimental: an undocumented internal endpoint from the reference project.
+# It can change or break without notice; unknown response shapes fail closed.
+# Requires BOTH this flag and an enabled provider entry. Never enabled by default.
+# experimental = true
+# [[ai.providers]]
+# id = "manus-experimental"  # api.manus.im/user.v1.UserService/GetAvailableCredits
+# enabled = false
+# interval_ms = 300000

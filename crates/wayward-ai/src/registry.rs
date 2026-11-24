@@ -6,6 +6,7 @@ use std::time::Duration;
 use wayward_core::config::{AiConfig, AiMode};
 
 use crate::claude_code::ClaudeCodeProvider;
+use crate::experimental::{ExperimentalProvider, MANUS_EXPERIMENTAL_ID};
 use crate::http::{ReqwestClient, UsageHttpClient};
 use crate::mock::MockProvider;
 use crate::official::{
@@ -116,6 +117,27 @@ pub fn build_providers(
                             }),
                         })
                     }
+                    MANUS_EXPERIMENTAL_ID => {
+                        if !config.experimental {
+                            return None;
+                        }
+                        let id = entry.id.clone();
+                        let token = secrets.get(&id);
+                        let http: Arc<dyn UsageHttpClient> = Arc::new(ReqwestClient::new());
+                        let rebuild_http = Arc::clone(&http);
+                        let rebuild_token = token.clone();
+                        Some(ProviderSpec {
+                            id,
+                            interval,
+                            provider: Box::new(ExperimentalProvider::new(http, token)),
+                            rebuild: Arc::new(move || {
+                                Box::new(ExperimentalProvider::new(
+                                    Arc::clone(&rebuild_http),
+                                    rebuild_token.clone(),
+                                ))
+                            }),
+                        })
+                    }
                     CLAUDE_OFFICIAL_ID | CODEX_OFFICIAL_ID | OPENCODE_OFFICIAL_ID => {
                         let kind = match entry.id.as_str() {
                             CLAUDE_OFFICIAL_ID => OfficialKind::Claude,
@@ -191,6 +213,17 @@ mod tests {
             reset_after_secs: 3_600,
             reset_anchor_secs: None,
         }
+    }
+
+    #[test]
+    fn experimental_provider_requires_experimental_flag() {
+        let mut config = real_config(vec![provider_config("manus-experimental", true, 60_000)]);
+        assert!(build_providers(&config, Path::new("home"), &NoSecrets).is_empty());
+
+        config.experimental = true;
+        let specs = build_providers(&config, Path::new("home"), &NoSecrets);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].provider.id(), "manus-experimental");
     }
 
     #[test]

@@ -208,6 +208,7 @@ pub fn validate(config: &Config) -> Vec<String> {
                     | "claude-official"
                     | "codex-official"
                     | "opencode-official"
+                    | "manus-experimental"
             ) {
                 errors.push(format!(
                     "{prefix}.id is not a known provider: {:?}",
@@ -216,8 +217,13 @@ pub fn validate(config: &Config) -> Vec<String> {
             }
             let is_official = matches!(
                 provider.id.as_str(),
-                "claude-official" | "codex-official" | "opencode-official"
+                "claude-official" | "codex-official" | "opencode-official" | "manus-experimental"
             );
+            if provider.id == "manus-experimental" && !config.ai.experimental {
+                errors.push(
+                    "ai.providers[manus-experimental] requires ai.experimental = true".to_owned(),
+                );
+            }
             if provider.interval_ms < 30_000 {
                 errors.push(format!(
                     "{prefix}.interval_ms must be at least 30000, got {}",
@@ -698,6 +704,18 @@ mod tests {
         };
 
         assert!(validate(&config).is_empty(), "{:?}", validate(&config));
+    }
+
+    #[test]
+    fn validate_requires_experimental_flag_for_experimental_provider() {
+        let config: Config = toml::from_str(
+            "[ai]\nenabled = true\nmode = \"real\"\n\
+             [[ai.providers]]\nid = \"manus-experimental\"\nenabled = true\ninterval_ms = 300000\n",
+        )
+        .expect("experimental provider config should deserialize");
+        assert!(validate(&config)
+            .iter()
+            .any(|error| error.contains("requires ai.experimental")));
     }
 
     #[test]

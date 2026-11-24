@@ -305,7 +305,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::http::HttpJsonResponse;
+    use crate::http::{HttpGet, HttpJsonResponse, HttpPost};
 
     struct FakeClient {
         status: u16,
@@ -331,6 +331,10 @@ mod tests {
                 status: self.status,
                 body: self.body.clone(),
             })
+        }
+
+        async fn post_json(&self, _request: HttpPost) -> anyhow::Result<HttpJsonResponse> {
+            unreachable!("official providers only use GET")
         }
     }
 

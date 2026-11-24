@@ -23,9 +23,17 @@ pub struct HttpGet {
     pub headers: Vec<(String, String)>,
 }
 
+#[derive(Debug, Clone)]
+pub struct HttpPost {
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Value,
+}
+
 #[async_trait]
 pub trait UsageHttpClient: Send + Sync {
     async fn get_json(&self, request: HttpGet) -> anyhow::Result<HttpJsonResponse>;
+    async fn post_json(&self, request: HttpPost) -> anyhow::Result<HttpJsonResponse>;
 }
 
 /// Production client. Uses rustls, so no OpenSSL dependency is introduced.
@@ -54,6 +62,20 @@ impl Default for ReqwestClient {
 impl UsageHttpClient for ReqwestClient {
     async fn get_json(&self, request: HttpGet) -> anyhow::Result<HttpJsonResponse> {
         let mut builder = self.inner.get(&request.url);
+        for (name, value) in &request.headers {
+            builder = builder.header(name, value);
+        }
+        let response = builder.send().await.context("usage API request failed")?;
+        let status = response.status().as_u16();
+        let body: Value = response
+            .json()
+            .await
+            .context("usage API response is not JSON")?;
+        Ok(HttpJsonResponse { status, body })
+    }
+
+    async fn post_json(&self, request: HttpPost) -> anyhow::Result<HttpJsonResponse> {
+        let mut builder = self.inner.post(&request.url).json(&request.body);
         for (name, value) in &request.headers {
             builder = builder.header(name, value);
         }
