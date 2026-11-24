@@ -6,9 +6,20 @@ use std::time::Duration;
 use wayward_core::config::{AiConfig, AiMode};
 
 use crate::claude_code::ClaudeCodeProvider;
+use crate::http::{ReqwestClient, UsageHttpClient};
 use crate::mock::MockProvider;
+use crate::official::{
+    OfficialKind, OfficialProvider, CLAUDE_OFFICIAL_ID, CODEX_OFFICIAL_ID, OPENCODE_OFFICIAL_ID,
+};
 use crate::opencode::OpenCodeProvider;
 use crate::UsageProvider;
+
+/// Read-only secret lookup supplied by the app layer. Keeps Win32 and the
+/// credential store out of this crate while still allowing official providers
+/// to obtain their token without ever touching `wayward.toml`.
+pub trait SecretLookup: Send + Sync {
+    fn get(&self, id: &str) -> Option<String>;
+}
 
 pub struct ProviderSpec {
     pub id: String,
@@ -38,7 +49,11 @@ impl Clone for ProviderSpec {
     }
 }
 
-pub fn build_providers(config: &AiConfig, home: &Path) -> Vec<ProviderSpec> {
+pub fn build_providers(
+    config: &AiConfig,
+    home: &Path,
+    secrets: &dyn SecretLookup,
+) -> Vec<ProviderSpec> {
     match config.mode {
         AiMode::Mock => vec![ProviderSpec {
             id: "mock".to_owned(),
@@ -101,6 +116,33 @@ pub fn build_providers(config: &AiConfig, home: &Path) -> Vec<ProviderSpec> {
                             }),
                         })
                     }
+                    CLAUDE_OFFICIAL_ID | CODEX_OFFICIAL_ID | OPENCODE_OFFICIAL_ID => {
+                        let kind = match entry.id.as_str() {
+                            CLAUDE_OFFICIAL_ID => OfficialKind::Claude,
+                            CODEX_OFFICIAL_ID => OfficialKind::Codex,
+                            _ => OfficialKind::OpenCode,
+                        };
+                        let id = entry.id.clone();
+                        let token = secrets.get(&id);
+                        let account = entry.account.clone();
+                        let http: Arc<dyn UsageHttpClient> = Arc::new(ReqwestClient::new());
+                        let rebuild_http = Arc::clone(&http);
+                        let rebuild_token = token.clone();
+                        let rebuild_account = account.clone();
+                        Some(ProviderSpec {
+                            id,
+                            interval,
+                            provider: Box::new(OfficialProvider::new(kind, http, token, account)),
+                            rebuild: Arc::new(move || {
+                                Box::new(OfficialProvider::new(
+                                    kind,
+                                    Arc::clone(&rebuild_http),
+                                    rebuild_token.clone(),
+                                    rebuild_account.clone(),
+                                ))
+                            }),
+                        })
+                    }
                     _ => None,
                 }
             })
@@ -117,6 +159,14 @@ mod tests {
     use wayward_core::config::{AiConfig, AiMode, AiProviderConfig};
 
     use super::*;
+
+    struct NoSecrets;
+
+    impl SecretLookup for NoSecrets {
+        fn get(&self, _id: &str) -> Option<String> {
+            None
+        }
+    }
 
     fn real_config(providers: Vec<AiProviderConfig>) -> AiConfig {
         AiConfig {
@@ -136,10 +186,40 @@ mod tests {
             enabled,
             interval_ms,
             root: None,
+            account: None,
             limit: 500.0,
             reset_after_secs: 3_600,
             reset_anchor_secs: None,
         }
+    }
+
+    #[test]
+    fn official_providers_are_built_with_stored_secrets() {
+        struct Secrets;
+        impl SecretLookup for Secrets {
+            fn get(&self, id: &str) -> Option<String> {
+                (id == "claude-official").then(|| "test-token".to_owned())
+            }
+        }
+        let config = real_config(vec![
+            provider_config("claude-official", true, 60_000),
+            provider_config("codex-official", true, 60_000),
+            provider_config("opencode-official", false, 60_000),
+        ]);
+
+        let specs = build_providers(&config, Path::new("home"), &Secrets);
+
+        assert_eq!(
+            specs
+                .iter()
+                .map(|spec| spec.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["claude-official", "codex-official"]
+        );
+        assert_eq!(specs[0].provider.id(), "claude-official");
+        assert_eq!(specs[1].provider.id(), "codex-official");
+        let rebuilt = specs[0].clone();
+        assert_eq!(rebuilt.provider.id(), "claude-official");
     }
 
     #[test]
@@ -150,7 +230,7 @@ mod tests {
             ..AiConfig::default()
         };
 
-        let specs = build_providers(&config, Path::new("home"));
+        let specs = build_providers(&config, Path::new("home"), &NoSecrets);
 
         assert_eq!(specs.len(), 1);
         assert_eq!(specs[0].id, "mock");
@@ -167,7 +247,7 @@ mod tests {
             provider_config("opencode", true, 4_000),
         ]);
 
-        let specs = build_providers(&config, Path::new("home"));
+        let specs = build_providers(&config, Path::new("home"), &NoSecrets);
 
         assert_eq!(
             specs
@@ -189,7 +269,7 @@ mod tests {
             ..AiConfig::default()
         };
 
-        assert!(build_providers(&config, Path::new("home")).is_empty());
+        assert!(build_providers(&config, Path::new("home"), &NoSecrets).is_empty());
     }
 
     #[test]
@@ -212,7 +292,7 @@ mod tests {
 
         let mut entry = provider_config("claude-code", true, 60_000);
         entry.root = Some(dir.path().to_path_buf());
-        let mut specs = build_providers(&real_config(vec![entry]), Path::new("home"));
+        let mut specs = build_providers(&real_config(vec![entry]), Path::new("home"), &NoSecrets);
 
         assert_eq!(specs.len(), 1);
         let usage = block_on(specs[0].provider.fetch()).expect("fetch from configured root");

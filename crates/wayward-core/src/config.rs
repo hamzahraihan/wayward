@@ -193,6 +193,8 @@ pub struct AiProviderConfig {
     pub enabled: bool,
     pub interval_ms: u64,
     pub root: Option<std::path::PathBuf>,
+    /// Non-secret account id sent to the Codex usage API, when required.
+    pub account: Option<String>,
     pub limit: f64,
     pub reset_after_secs: u64,
     pub reset_anchor_secs: Option<u64>,
@@ -205,6 +207,7 @@ impl Default for AiProviderConfig {
             enabled: false,
             interval_ms: 300_000,
             root: None,
+            account: None,
             limit: 0.0,
             reset_after_secs: 18_000,
             reset_anchor_secs: None,

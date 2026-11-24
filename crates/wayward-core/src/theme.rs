@@ -200,25 +200,37 @@ pub fn validate(config: &Config) -> Vec<String> {
         }
         for (index, provider) in ai.providers.iter().enumerate() {
             let prefix = format!("ai.providers[{index}]");
-            if !matches!(provider.id.as_str(), "claude-code" | "opencode" | "mock") {
+            if !matches!(
+                provider.id.as_str(),
+                "claude-code"
+                    | "opencode"
+                    | "mock"
+                    | "claude-official"
+                    | "codex-official"
+                    | "opencode-official"
+            ) {
                 errors.push(format!(
                     "{prefix}.id is not a known provider: {:?}",
                     provider.id
                 ));
             }
+            let is_official = matches!(
+                provider.id.as_str(),
+                "claude-official" | "codex-official" | "opencode-official"
+            );
             if provider.interval_ms < 30_000 {
                 errors.push(format!(
                     "{prefix}.interval_ms must be at least 30000, got {}",
                     provider.interval_ms
                 ));
             }
-            if provider.limit <= 0.0 {
+            if !is_official && provider.limit <= 0.0 {
                 errors.push(format!(
                     "{prefix}.limit must be > 0.0, got {}",
                     provider.limit
                 ));
             }
-            if provider.reset_after_secs == 0 {
+            if !is_official && provider.reset_after_secs == 0 {
                 errors.push(format!("{prefix}.reset_after_secs must be > 0, got 0"));
             }
             if provider.reset_anchor_secs == Some(0) {
@@ -684,6 +696,17 @@ mod tests {
             },
             ..Config::default()
         };
+
+        assert!(validate(&config).is_empty(), "{:?}", validate(&config));
+    }
+
+    #[test]
+    fn validate_accepts_official_providers_without_local_limits() {
+        let config: Config = toml::from_str(
+            "[ai]\nenabled = true\nmode = \"real\"\n\
+             [[ai.providers]]\nid = \"claude-official\"\nenabled = true\ninterval_ms = 300000\n",
+        )
+        .expect("official provider config should deserialize");
 
         assert!(validate(&config).is_empty(), "{:?}", validate(&config));
     }

@@ -10,7 +10,7 @@ use iced::widget::{container, row, text, Column, Container, Row};
 use iced::Element;
 
 use wayward_ai::level::{format_remaining, meter_level, percent_used};
-use wayward_ai::Usage;
+use wayward_ai::{Spend, Usage};
 use wayward_core::Level;
 
 use crate::style::{level_color, Colors};
@@ -125,6 +125,14 @@ fn divider<'a>(colors: &Colors) -> Element<'a, Message> {
         .into()
 }
 
+/// Pure spend line for the popup. Uses only theme-derived colors at the call site.
+pub fn format_spend(spend: &Spend) -> String {
+    format!(
+        "spend {:.2} / {:.2} {}",
+        spend.used, spend.limit, spend.currency
+    )
+}
+
 pub fn retain_provider_snapshots(snapshots: &mut Vec<AiSnapshot>, ids: &[String]) {
     snapshots.retain(|snapshot| ids.iter().any(|id| id == &snapshot.provider_id));
 }
@@ -219,6 +227,19 @@ pub fn popup<'a>(
             }
         }
 
+        if let Some(spend) = snapshot
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.spend.as_ref())
+        {
+            body = body.push(
+                text(format_spend(spend))
+                    .font(mono())
+                    .size(FONT_SIZE)
+                    .color(colors.foreground),
+            );
+        }
+
         let updated = format!(
             "updated {}s ago",
             now.saturating_duration_since(snapshot.fetched_at).as_secs()
@@ -279,6 +300,16 @@ mod tests {
 
     const TEST_WARN: f32 = 0.20;
     const TEST_URGENT: f32 = 0.0;
+
+    #[test]
+    fn spend_line_renders_amount_limit_and_currency() {
+        let spend = Spend {
+            used: 12.34,
+            limit: 50.0,
+            currency: "USD".to_owned(),
+        };
+        assert_eq!(format_spend(&spend), "spend 12.34 / 50.00 USD");
+    }
 
     #[test]
     fn configured_thresholds_reach_fetched_and_failed_snapshots() {

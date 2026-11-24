@@ -83,6 +83,7 @@ fn known_keys() -> BTreeSet<&'static str> {
         "providers",
         "id",
         "root",
+        "account",
         "limit",
         "reset_after_secs",
         "reset_anchor_secs",
@@ -616,6 +617,32 @@ mod tests {
 
         fs::write(&path, enabled).expect("rewrite identical bytes");
         assert_eq!(context.reload(), ReloadOutcome::Unchanged);
+    }
+
+    #[test]
+    fn official_provider_config_round_trip_has_no_secret() {
+        let temp = TempDir::new("official-provider");
+        let path = temp.0.join("wayward.toml");
+        let baseline = "[ai]\nenabled = true\nmode = \"real\"\n\
+                        [[ai.providers]]\nid = \"claude-official\"\nenabled = true\ninterval_ms = 300000\n";
+        fs::write(&path, baseline).expect("write config");
+        let mut context = context_at(&temp.0);
+
+        match context.reload() {
+            ReloadOutcome::Loaded { config, warnings } => {
+                assert!(config.ai.providers[0].enabled);
+                assert_eq!(config.ai.providers[0].id, "claude-official");
+                assert!(
+                    !warnings
+                        .iter()
+                        .any(|warning| warning.contains("id") || warning.contains("account")),
+                    "unexpected warnings: {warnings:?}"
+                );
+            }
+            other => panic!("expected Loaded, got {other:?}"),
+        }
+        let text = fs::read_to_string(&path).expect("read config");
+        assert!(!text.contains("test-token"), "secret must never enter TOML");
     }
 
     #[test]

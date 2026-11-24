@@ -537,6 +537,7 @@ fn subscription(state: &AppState) -> Subscription<Message> {
                     enabled: provider.enabled,
                     interval_ms: provider.interval_ms,
                     root: provider.root.clone(),
+                    account: provider.account.clone(),
                     limit_bits: provider.limit.to_bits(),
                     reset_after_secs: provider.reset_after_secs,
                     reset_anchor_secs: provider.reset_anchor_secs,
@@ -581,6 +582,27 @@ fn main() -> anyhow::Result<()> {
         cli::CliAction::OpenConfig => {
             let loaded = config_io::load_config()?;
             wayward_platform::open_in_explorer(&loaded.path)?;
+            return Ok(());
+        }
+        cli::CliAction::SetCredential { provider } => {
+            let account = wayward_platform::account_for(&provider).map_err(anyhow::Error::msg)?;
+            eprint!("Credential for {account}: ");
+            let secret = wayward_platform::read_secret().map_err(anyhow::Error::msg)?;
+            if secret.is_empty() {
+                anyhow::bail!("secret must not be empty");
+            }
+            wayward_platform::store_credential(&provider, &secret).map_err(anyhow::Error::msg)?;
+            println!("Stored credential for {account}");
+            return Ok(());
+        }
+        cli::CliAction::DeleteCredential { provider } => {
+            let removed =
+                wayward_platform::delete_credential(&provider).map_err(anyhow::Error::msg)?;
+            if removed {
+                println!("Deleted credential for {provider}");
+            } else {
+                println!("No credential stored for {provider}");
+            }
             return Ok(());
         }
         cli::CliAction::Run => {}

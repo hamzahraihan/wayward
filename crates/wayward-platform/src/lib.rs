@@ -1,6 +1,7 @@
 pub mod appbar;
 pub mod audio;
 pub mod console;
+pub mod credentials;
 pub mod foreground;
 pub mod network;
 pub mod power;
@@ -13,7 +14,10 @@ pub use audio::{audio_state, AudioState};
 pub use foreground::{foreground_title, truncate_title, ForegroundEvent, ForegroundGuard};
 pub use network::{network_state, NetworkState};
 
-pub use console::{claim_ctrl_event, ConsoleGuard};
+pub use console::{claim_ctrl_event, read_secret, ConsoleGuard};
+pub use credentials::{
+    account_for, delete as delete_credential, load as load_credential, store as store_credential,
+};
 pub use power::*;
 pub use screen::*;
 pub use shell::*;

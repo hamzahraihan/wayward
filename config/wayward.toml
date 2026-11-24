@@ -111,3 +111,27 @@ urgent_below = 0.0      # urgent at 0 left / limit hit
 # limit = 1000000
 # reset_after_secs = 18000
 # reset_anchor_secs = 1700000000  # optional epoch anchor; omit for a rolling window
+
+# Official usage APIs (real vendor percentages and reset times). These do NOT
+# use `limit`, `reset_after_secs` or `root` above; those are local-provider
+# settings. Each official provider needs a credential in the Windows
+# Credential Manager, stored with:
+#   wayward --set-credential claude-official
+# The secret is read from stdin with echo disabled and is NEVER written to
+# this file or to logs. Use --delete-credential <id> to remove one.
+# Do not enable a provider until its credential has been stored.
+# [[ai.providers]]
+# id = "claude-official"   # api.anthropic.com/api/oauth/usage
+# enabled = false
+# interval_ms = 300000
+
+# [[ai.providers]]
+# id = "codex-official"    # chatgpt.com/backend-api/api/codex/usage
+# enabled = false
+# interval_ms = 300000
+# account = ""             # optional non-secret chatgpt-account-id header
+
+# [[ai.providers]]
+# id = "opencode-official" # opencode.ai/zen/go/v1/usage (requires Go plan)
+# enabled = false
+# interval_ms = 300000

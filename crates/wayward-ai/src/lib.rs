@@ -1,6 +1,8 @@
 pub mod claude_code;
+pub mod http;
 pub mod level;
 pub mod mock;
+pub mod official;
 pub mod opencode;
 pub mod registry;
 pub mod window;

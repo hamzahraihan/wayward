@@ -1,15 +1,61 @@
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
+use std::io::{self, BufRead, Write};
 use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+
 use windows::Win32::System::Console::{
-    AttachConsole, SetConsoleCtrlHandler, ATTACH_PARENT_PROCESS, CTRL_BREAK_EVENT, CTRL_C_EVENT,
+    AttachConsole, GetConsoleMode, GetStdHandle, SetConsoleCtrlHandler, SetConsoleMode,
+    ATTACH_PARENT_PROCESS, CTRL_BREAK_EVENT, CTRL_C_EVENT, ENABLE_ECHO_INPUT, STD_INPUT_HANDLE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
 
 static HANDLER_INSTALLED: AtomicBool = AtomicBool::new(false);
 static CTRL_CLAIMED: AtomicBool = AtomicBool::new(false);
 static TARGET_HWND: AtomicIsize = AtomicIsize::new(0);
+
+/// Read one line from stdin with console echo disabled, so a secret typed at
+/// an interactive prompt is not displayed. Piped stdin needs no echo change.
+pub fn read_secret() -> Result<String, String> {
+    // SAFETY: GetStdHandle takes a standard-device constant and returns a
+    // handle by value. An error means stdin is not a console (e.g. piped
+    // input), in which case there is no echo to suppress.
+    let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) }.ok();
+    let mut original_mode = None;
+
+    if let Some(handle) = handle {
+        // SAFETY: GetConsoleMode writes one value into a live, correctly typed
+        // local and returns a Result by value. The handle is the console stdin.
+        let mut mode = windows::Win32::System::Console::CONSOLE_MODE(0);
+        if unsafe { GetConsoleMode(handle, &mut mode) }.is_ok() {
+            let no_echo =
+                windows::Win32::System::Console::CONSOLE_MODE(mode.0 & !ENABLE_ECHO_INPUT.0);
+            // SAFETY: SetConsoleMode takes a console handle and a mode value;
+            // it changes only this process's console input mode.
+            if unsafe { SetConsoleMode(handle, no_echo) }.is_ok() {
+                original_mode = Some((handle, mode));
+            }
+        }
+    }
+
+    let mut line = String::new();
+    let result = io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .map_err(|error| format!("reading secret from stdin: {error}"));
+    let _ = io::stderr().flush();
+
+    if let Some((handle, mode)) = original_mode {
+        // SAFETY: restores the exact mode read above; the handle remains valid
+        // for the lifetime of this process.
+        unsafe {
+            let _ = SetConsoleMode(handle, mode);
+        }
+    }
+
+    result?;
+    Ok(line.trim_end_matches(['\r', '\n']).to_owned())
+}
 
 /// Pure single-shot claim used by the console handler.
 pub fn claim_ctrl_event(claimed: &AtomicBool) -> bool {

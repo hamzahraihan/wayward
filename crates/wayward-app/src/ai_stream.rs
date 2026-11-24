@@ -8,9 +8,25 @@ use iced::futures::{FutureExt, StreamExt};
 use iced::{stream, Subscription};
 use tokio::time::Instant as TokioInstant;
 use wayward_ai::level::aggregate_level;
-use wayward_ai::registry::{build_providers, ProviderSpec};
+use wayward_ai::registry::{build_providers, ProviderSpec, SecretLookup};
 use wayward_ai::Usage;
 use wayward_core::config::{AiConfig, AiMode, AiProviderConfig};
+
+/// Credential lookup backed by the Windows Credential Manager. Kept here at
+/// the app boundary; `wayward-ai` only sees the `SecretLookup` trait.
+struct KeyringSecrets;
+
+impl SecretLookup for KeyringSecrets {
+    fn get(&self, id: &str) -> Option<String> {
+        match wayward_platform::load_credential(id) {
+            Ok(secret) => secret,
+            Err(error) => {
+                tracing::warn!(provider = id, "credential lookup failed: {error}");
+                None
+            }
+        }
+    }
+}
 
 use crate::view::Message;
 
@@ -44,6 +60,7 @@ pub struct AiProviderKey {
     pub enabled: bool,
     pub interval_ms: u64,
     pub root: Option<PathBuf>,
+    pub account: Option<String>,
     pub limit_bits: u64,
     pub reset_after_secs: u64,
     pub reset_anchor_secs: Option<u64>,
@@ -138,6 +155,7 @@ fn config_from_key(key: &AiStreamKey) -> AiConfig {
                 enabled: provider.enabled,
                 interval_ms: provider.interval_ms,
                 root: provider.root.clone(),
+                account: provider.account.clone(),
                 limit: f64::from_bits(provider.limit_bits),
                 reset_after_secs: provider.reset_after_secs,
                 reset_anchor_secs: provider.reset_anchor_secs,
@@ -151,7 +169,7 @@ fn build_stream(key: &AiStreamKey) -> impl iced::futures::Stream<Item = Message>
     let urgent_below_bits = key.urgent_below_bits;
     let config = config_from_key(key);
     let home = dirs::home_dir().unwrap_or_default();
-    let mut states: Vec<ProviderState> = build_providers(&config, &home)
+    let mut states: Vec<ProviderState> = build_providers(&config, &home, &KeyringSecrets)
         .into_iter()
         .map(|mut spec| {
             spec.interval = spec.interval.max(MIN_INTERVAL);
@@ -283,6 +301,7 @@ mod tests {
                     "wayward-backoff-missing-{}-{nanos}",
                     std::process::id()
                 ))),
+                account: None,
                 limit_bits: 1_000_000.0f64.to_bits(),
                 reset_after_secs: 3_600,
                 reset_anchor_secs: None,
@@ -319,7 +338,7 @@ mod tests {
             interval_ms: 60_000,
             ..AiConfig::default()
         };
-        let spec = build_providers(&config, std::path::Path::new("home"))
+        let spec = build_providers(&config, std::path::Path::new("home"), &KeyringSecrets)
             .into_iter()
             .next()
             .expect("mock provider");
